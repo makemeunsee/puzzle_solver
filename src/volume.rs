@@ -2,20 +2,16 @@ use std::collections::HashSet;
 
 use crate::common::{Block, Dir, Face};
 use itertools::Itertools;
-use log::{debug, info, trace};
+use log::{debug, trace};
 
-pub fn solve() {
+pub fn solver() -> Solver {
     let height = crate::common::HEIGHT as usize;
     let width = crate::common::WIDTH as usize;
     let depth = crate::common::DEPTH as usize;
     let volume = height * width * depth;
-    let rot_blocks_owned = crate::common::BLOCKS
+    let rot_blocks = crate::common::BLOCKS
         .iter()
         .map(|block| all_rots(block).to_vec())
-        .collect_vec();
-    let rot_blocks = rot_blocks_owned
-        .iter()
-        .map(|blocks| blocks.iter().collect_vec())
         .collect_vec();
     let mut solver = Solver {
         block_count: crate::common::BLOCK_COUNT,
@@ -32,10 +28,7 @@ pub fn solve() {
         count: 0,
     };
     solver.init();
-    while !solver.done() && solver.step() {
-        // TODO visualize it
-    }
-    info!("{}", solver.solution_count());
+    solver
 }
 
 fn rot_face(axis: &Dir, face: &Face) -> Face {
@@ -255,38 +248,36 @@ fn all_rots(block: &Block) -> [Block; ROT_COUNT] {
     result.into_inner().unwrap()
 }
 
-#[derive(Debug)]
-struct RotBlock<'a> {
-    // a block, with its rotation applied
-    block: &'a Block,
-    // the id of the block within `BLOCKS`
+#[derive(Debug, Clone, Copy)]
+struct BlockInPlace {
+    // the index of a block row within a reference [[Block]] 2D array
     block_id: usize,
-    // the id of the rotation
+    // the index of a rotation within a reference [Block] array
     rot_id: usize,
     // where the block was placed
     position: usize,
 }
 
-struct Solver<'a> {
+pub struct Solver {
     block_count: usize,
     rot_count: usize,
     puzzle_height: usize,
     puzzle_width: usize,
     puzzle_depth: usize,
-    rot_blocks: Vec<Vec<&'a Block>>,
-    stack: Vec<RotBlock<'a>>,
+    rot_blocks: Vec<Vec<Block>>,
+    stack: Vec<BlockInPlace>,
     // ids of blocks still to be stacked
     rem: HashSet<usize>,
     // next position within state where to place a block
     position: usize,
     // 3d array tracking what space of the puzzle is filled with blocks
-    state: Vec<Option<&'a Block>>,
+    state: Vec<Option<BlockInPlace>>,
     done: bool,
     count: u64,
 }
 
-impl Solver<'_> {
-    fn solution_count(&self) -> u64 {
+impl Solver {
+    pub fn solution_count(&self) -> u64 {
         self.count
     }
 
@@ -298,25 +289,15 @@ impl Solver<'_> {
                 for _ in 0..self.puzzle_height {
                     result.push_str(&format!(
                         "{} ",
-                        self.state[idx].map(|b| b.label).unwrap_or("")
+                        self.state[idx]
+                            .map(|b| self.rot_blocks[b.block_id][b.rot_id].label)
+                            .unwrap_or("")
                     ));
                     idx += 1;
                 }
                 result.push('\n');
             }
             result.push('\n');
-        }
-        result
-    }
-
-    fn print_stack(&self) -> String {
-        let mut result = String::new();
-        for block in &self.stack {
-            result.push_str(&format!("Block #{} [ ", block.block_id));
-            for f in &block.block.faces {
-                result.push_str(&format!("{:0>2} ", f.value));
-            }
-            result.push_str("]\n");
         }
         result
     }
@@ -330,11 +311,11 @@ impl Solver<'_> {
         result
     }
 
-    fn done(&self) -> bool {
+    pub fn done(&self) -> bool {
         self.done
     }
 
-    fn step(&mut self) -> bool {
+    pub fn step(&mut self) -> bool {
         trace!("step");
         if !self.rem.is_empty() {
             trace!("deeper?");
@@ -383,34 +364,31 @@ impl Solver<'_> {
     fn move_sideway_or_backtrack(&mut self) -> bool {
         // backtrack
         let top = self.stack.pop().unwrap();
+        let block_id = top.block_id;
+        let rot_id = top.rot_id;
         let position = top.position;
-        let block = top.block;
-        self.remove_block_from_state(block, position);
+        self.remove_block_from_state(top);
         self.position = position;
-        self.rem.insert(top.block_id);
+        self.rem.insert(block_id);
 
         // try placing again the same block, with a different rot
-        for rot_id in top.rot_id + 1..self.rot_count {
-            if self.deeper(top.block_id, rot_id) {
+        for rot_id in rot_id + 1..self.rot_count {
+            if self.deeper(block_id, rot_id) {
                 trace!(
                     "sideway a ({}={}), new block {}, rot {} - rem {:?}",
                     self.stack.len(),
                     self.print_stack_tiny(),
-                    top.block_id,
+                    block_id,
                     rot_id,
                     self.rem
                 );
                 return true;
             } else {
-                trace!(
-                    "skipped block {}, rot {} (doesnt fit)",
-                    top.block_id,
-                    rot_id
-                );
+                trace!("skipped block {}, rot {} (doesnt fit)", block_id, rot_id);
             }
         }
         // try placing a sibling
-        for block_id in top.block_id + 1..self.block_count {
+        for block_id in block_id + 1..self.block_count {
             if !self.rem.contains(&block_id) {
                 continue;
             }
@@ -440,7 +418,10 @@ impl Solver<'_> {
         false
     }
 
-    fn remove_block_from_state(&mut self, block: &Block, position: usize) {
+    fn remove_block_from_state(&mut self, rot_block: BlockInPlace) {
+        let position = rot_block.position;
+        let block = &self.rot_blocks[rot_block.block_id][rot_block.rot_id];
+
         let slice_area = self.puzzle_height * self.puzzle_width;
 
         let x_start = position % self.puzzle_height;
@@ -469,35 +450,26 @@ impl Solver<'_> {
             self.puzzle_height,
             self.puzzle_width,
             self.puzzle_depth,
-            self.position,
-            &self.state,
+            &mut self.state,
+            BlockInPlace {
+                block_id,
+                rot_id,
+                position: self.position,
+            },
             block,
         ) {
-            Some((Some(new_position), new_state)) => {
-                self.stack.push(RotBlock {
-                    block,
+            Some(new_position) => {
+                self.stack.push(BlockInPlace {
                     block_id,
                     rot_id,
                     position: self.position,
                 });
                 self.rem.remove(&block_id);
                 self.position = new_position;
-                self.state = new_state;
-                true
-            }
-            Some((None, new_state)) => {
-                // we've reached a solution
-                self.stack.push(RotBlock {
-                    block,
-                    block_id,
-                    rot_id,
-                    position: self.position,
-                });
-                self.rem.remove(&block_id);
-                self.position = self.puzzle_height * self.puzzle_width * self.puzzle_depth;
-                self.state = new_state;
-                debug!("solution:\n{}", self.print_state());
-                self.count += 1;
+                if self.position == self.puzzle_height * self.puzzle_width * self.puzzle_depth {
+                    debug!("solution:\n{}", self.print_state());
+                    self.count += 1;
+                }
                 true
             }
             None => false,
@@ -519,15 +491,17 @@ impl Solver<'_> {
     }
 }
 
-fn place_3d<'a>(
+fn place_3d(
     cuboid_height: usize,
     cuboid_width: usize,
     cuboid_depth: usize,
-    start_point: usize,
-    state: &[Option<&'a Block>],
-    block: &'a Block,
-) -> Option<(Option<usize>, Vec<Option<&'a Block>>)> {
+    state: &mut [Option<BlockInPlace>],
+    block_id: BlockInPlace,
+    block: &Block,
+) -> Option<usize> {
     let slice_area = cuboid_height * cuboid_width;
+
+    let start_point = block_id.position;
 
     let x_start = start_point % cuboid_height;
     let x_end = x_start + block.height as usize;
@@ -539,7 +513,7 @@ fn place_3d<'a>(
     let z_end = z_start + block.depth as usize;
 
     if x_end <= cuboid_height && y_end <= cuboid_width && z_end <= cuboid_depth {
-        let mut new_state = state.to_vec();
+        // only if the block fits...
         for k in z_start..z_end {
             for j in y_start..y_end {
                 for i in x_start..x_end {
@@ -547,16 +521,31 @@ fn place_3d<'a>(
                     if state[idx].is_some() {
                         return None;
                     }
-                    new_state[idx] = Some(block);
                 }
             }
         }
-        let new_start_point = new_state.iter().position(|&e| e.is_none());
-        Some((new_start_point, new_state))
+        // ... is the state updated
+        for k in z_start..z_end {
+            for j in y_start..y_end {
+                for i in x_start..x_end {
+                    let idx = k * slice_area + j * cuboid_height + i;
+                    state[idx] = Some(block_id);
+                }
+            }
+        }
+        let volume = slice_area * cuboid_depth;
+        let new_start_point = state
+            .iter()
+            .skip(start_point)
+            .position(|&e| e.is_none())
+            .map(|r| r + start_point)
+            .unwrap_or(volume);
+        Some(new_start_point)
     } else {
         None
     }
 }
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -607,8 +596,8 @@ mod test {
         let block_b_rot_2 = rot_block(&Dir::Right, &block_b);
 
         let rot_blocks = [
-            [&block_a, &block_a_rot_1, &block_a_rot_2].to_vec(),
-            [&block_b, &block_b_rot_1, &block_b_rot_2].to_vec(),
+            [block_a, block_a_rot_1, block_a_rot_2].to_vec(),
+            [block_b, block_b_rot_1, block_b_rot_2].to_vec(),
         ]
         .to_vec();
 
@@ -656,10 +645,10 @@ mod test {
         let block_d_rot_2 = rot_block(&Dir::Right, &block_d);
 
         let rot_blocks = [
-            [&block_a, &block_a_rot_1, &block_a_rot_2].to_vec(),
-            [&block_b, &block_b_rot_1, &block_b_rot_2].to_vec(),
-            [&block_c, &block_c_rot_1, &block_c_rot_2].to_vec(),
-            [&block_d, &block_d_rot_1, &block_d_rot_2].to_vec(),
+            [block_a, block_a_rot_1, block_a_rot_2].to_vec(),
+            [block_b, block_b_rot_1, block_b_rot_2].to_vec(),
+            [block_c, block_c_rot_1, block_c_rot_2].to_vec(),
+            [block_d, block_d_rot_1, block_d_rot_2].to_vec(),
         ]
         .to_vec();
 

@@ -23,8 +23,6 @@ lazy_static! {
     static ref AREAS: HashSet<u8> = HashSet::from([AREA_L, AREA_M, AREA_S]);
 }
 
-pub const VOLUME: usize = HEIGHT as usize * WIDTH as usize * DEPTH as usize;
-
 #[derive(Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Hash)]
 pub enum Dir {
     Front,
