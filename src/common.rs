@@ -125,6 +125,7 @@ pub struct Block {
     pub width: u8,
     pub depth: u8,
     pub faces: [Face; 6], // order: Front, Back, Left, Right, Top, Bottom
+    pub label: &'static str,
 }
 
 /// The blocks composing the puzzle
@@ -177,6 +178,7 @@ pub const BLOCKS: [Block; BLOCK_COUNT] = [
                 dir: Dir::Bottom,
             },
         ],
+        label: "bigger_chunk",
     },
     Block {
         height: 9,
@@ -226,6 +228,7 @@ pub const BLOCKS: [Block; BLOCK_COUNT] = [
                 dir: Dir::Bottom,
             },
         ],
+        label: "thinner_chunk",
     },
     Block {
         height: 9,
@@ -275,6 +278,7 @@ pub const BLOCKS: [Block; BLOCK_COUNT] = [
                 dir: Dir::Bottom,
             },
         ],
+        label: "square_chunk",
     },
     Block {
         height: 9,
@@ -324,6 +328,7 @@ pub const BLOCKS: [Block; BLOCK_COUNT] = [
                 dir: Dir::Bottom,
             },
         ],
+        label: "small_chunk",
     },
     Block {
         height: 9,
@@ -373,6 +378,7 @@ pub const BLOCKS: [Block; BLOCK_COUNT] = [
                 dir: Dir::Bottom,
             },
         ],
+        label: "smaller_chunk",
     },
     Block {
         height: 6,
@@ -422,6 +428,7 @@ pub const BLOCKS: [Block; BLOCK_COUNT] = [
                 dir: Dir::Bottom,
             },
         ],
+        label: "big_brick",
     },
     Block {
         height: 6,
@@ -471,6 +478,7 @@ pub const BLOCKS: [Block; BLOCK_COUNT] = [
                 dir: Dir::Bottom,
             },
         ],
+        label: "long_square",
     },
     Block {
         height: 5,
@@ -520,6 +528,7 @@ pub const BLOCKS: [Block; BLOCK_COUNT] = [
                 dir: Dir::Bottom,
             },
         ],
+        label: "short_square",
     },
     Block {
         height: 5,
@@ -569,6 +578,7 @@ pub const BLOCKS: [Block; BLOCK_COUNT] = [
                 dir: Dir::Bottom,
             },
         ],
+        label: "small_brick",
     },
 ];
 
