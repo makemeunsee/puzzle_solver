@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::common::{Block, Dir, Face, BLOCKS, BLOCK_COUNT, DEPTH, HEIGHT, VOLUME, WIDTH};
+use crate::common::{Block, Dir, Face, AREA_L, BLOCKS, BLOCK_COUNT, DEPTH, HEIGHT, VOLUME, WIDTH};
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use log::{debug, info, trace};
@@ -11,7 +11,7 @@ lazy_static! {
 
 pub fn solve() {
     let mut solver = Solver::new();
-    while solver.step() {
+    while !solver.done() && solver.step() {
         // TODO visualize it
     }
     // cuboid_configs(HEIGHT, WIDTH, DEPTH, &ROT_BLOCKS);
@@ -228,6 +228,7 @@ fn all_rots(block: &Block) -> [Block; ROT_COUNT] {
     result.into_inner().unwrap()
 }
 
+#[derive(Debug)]
 struct RotBlock<'a> {
     // a block, with its rotation applied
     block: &'a Block,
@@ -235,6 +236,8 @@ struct RotBlock<'a> {
     block_id: usize,
     // the id of the rotation
     rot_id: usize,
+    // where the block was placed
+    position: usize,
 }
 
 struct Solver<'a> {
@@ -245,6 +248,8 @@ struct Solver<'a> {
     position: usize,
     // 3d array tracking what space of the puzzle is filled with blocks
     state: Vec<Option<&'a Block>>,
+    done: bool,
+    count: u64,
 }
 
 impl Solver<'_> {
@@ -254,33 +259,174 @@ impl Solver<'_> {
             rem: HashSet::from_iter(0..BLOCK_COUNT),
             position: 0,
             state: vec![None; VOLUME],
+            done: false,
+            count: 0,
         };
         solver.init();
         solver
+    }
+
+    fn print_state(&self) -> String {
+        let mut result = String::new();
+        let mut idx = 0;
+        for _ in 0..DEPTH as usize {
+            for _ in 0..WIDTH as usize {
+                for _ in 0..HEIGHT as usize {
+                    result.push_str(&format!(
+                        "{:0>2} ",
+                        self.state[idx].map(|b| b.faces[0].value).unwrap_or(0)
+                    ));
+                    idx += 1;
+                }
+                result.push('\n');
+            }
+            result.push('\n');
+        }
+        result
+    }
+
+    fn print_stack(&self) -> String {
+        let mut result = String::new();
+        for block in &self.stack {
+            result.push_str(&format!("Block #{} [ ", block.block_id));
+            for f in &block.block.faces {
+                result.push_str(&format!("{:0>2} ", f.value));
+            }
+            result.push_str("]\n");
+        }
+        result
+    }
+
+    fn print_stack_tiny(&self) -> String {
+        let mut result = "[ ".to_string();
+        for block in &self.stack {
+            result.push_str(&format!("{} ", block.block_id));
+        }
+        result.push(']');
+        result
+    }
+
+    fn done(&self) -> bool {
+        self.done
     }
 
     fn step(&mut self) -> bool {
         if !self.rem.is_empty() {
             // case 1:
             // try to go deeper (place a new block)
-            let block_id = *self.rem.iter().find_or_first(|_| true).unwrap();
+            let block_id = *self.rem.iter().min().unwrap();
             for rot_id in 0..ROT_COUNT {
                 if self.deeper(block_id, rot_id) {
+                    trace!(
+                        "deeper ({}={}), new block {}, rot {} - rem {:?}",
+                        self.stack.len(),
+                        self.print_stack_tiny(),
+                        block_id,
+                        rot_id,
+                        self.rem
+                    );
                     return true;
+                } else {
+                    trace!("skipped block {}, rot {} (doesnt fit)", block_id, rot_id);
                 }
             }
         }
         // cant place a new block ->
-        // case 2:
-        // move sideway in the graph (replace the block at the top of the stack)
-        // TODO
-        // cant move sideway directly ->
-        // case 3:
-        // backtrack until we can move sideway
-        // TODO
-        // still cant backtrack ->
-        // the end!
+        loop {
+            // case 2:
+            // move sideway in the graph (replace the block at the top of the stack)
+            // case 3:
+            // or backtrack
+            if self.move_sideway_or_backtrack() {
+                return true;
+            }
+            // case 4:
+            // cant move sideway, cant backtrack, the end
+            if self.stack.is_empty() {
+                break;
+            }
+        }
+        self.done = true;
+        info!("count {}", self.count);
         false
+    }
+
+    fn move_sideway_or_backtrack(&mut self) -> bool {
+        // backtrack
+        trace!("backtracking");
+        let top = self.stack.pop().unwrap();
+        let position = top.position;
+        let block = top.block;
+        self.remove_block_from_state(block, position);
+        self.position = position;
+        self.rem.insert(top.block_id);
+
+        // try placing again the same block, with a different rot
+        for rot_id in top.rot_id + 1..ROT_COUNT {
+            if self.deeper(top.block_id, rot_id) {
+                trace!(
+                    "sideway a ({}={}), new block {}, rot {} - rem {:?}",
+                    self.stack.len(),
+                    self.print_stack_tiny(),
+                    top.block_id,
+                    rot_id,
+                    self.rem
+                );
+                return true;
+            } else {
+                trace!(
+                    "skipped block {}, rot {} (doesnt fit)",
+                    top.block_id,
+                    rot_id
+                );
+            }
+        }
+        // try placing a sibling
+        for block_id in top.block_id + 1..BLOCK_COUNT {
+            if !self.rem.contains(&block_id) {
+                continue;
+            }
+            for rot_id in 0..ROT_COUNT {
+                if self.deeper(block_id, rot_id) {
+                    trace!(
+                        "sideway b ({}={}), new block {}, rot {} - rem {:?}",
+                        self.stack.len(),
+                        self.print_stack_tiny(),
+                        block_id,
+                        rot_id,
+                        self.rem
+                    );
+                    return true;
+                } else {
+                    trace!("skipped block {}, rot {} (doesnt fit)", block_id, rot_id);
+                }
+            }
+        }
+        // stay backtracked
+        false
+    }
+
+    fn remove_block_from_state(&mut self, block: &Block, position: usize) {
+        let slice_area = AREA_L as usize;
+        let cuboid_height = HEIGHT as usize;
+
+        let x_start = position % cuboid_height;
+        let x_end = x_start + block.height as usize;
+
+        let y_start = (position % slice_area) / cuboid_height;
+        let y_end = y_start + block.width as usize;
+
+        let z_start = position / slice_area;
+        let z_end = z_start + block.depth as usize;
+
+        for k in z_start..z_end {
+            for j in y_start..y_end {
+                for i in x_start..x_end {
+                    let idx = k * slice_area + j * cuboid_height + i;
+                    self.state[idx] = None;
+                }
+            }
+        }
     }
 
     // try to go deeper in the solution graph, by placing one more rotated block
@@ -292,6 +438,7 @@ impl Solver<'_> {
                     block,
                     block_id,
                     rot_id,
+                    position: self.position,
                 });
                 self.rem.remove(&block_id);
                 self.position = new_position;
@@ -300,7 +447,17 @@ impl Solver<'_> {
             }
             Some((None, new_state)) => {
                 // we've reached a solution
-                // TODO: do something with the solution
+                self.stack.push(RotBlock {
+                    block,
+                    block_id,
+                    rot_id,
+                    position: self.position,
+                });
+                self.rem.remove(&block_id);
+                self.position = VOLUME;
+                self.state = new_state;
+                debug!("solution:\n{}", self.print_state());
+                self.count += 1;
                 true
             }
             None => false,
@@ -308,7 +465,17 @@ impl Solver<'_> {
     }
 
     fn init(&mut self) -> bool {
-        self.deeper(0, 0)
+        trace!("init");
+        self.deeper(0, 0);
+        trace!(
+            "deeper ({}={}), new block {}, rot {} - rem {:?}",
+            self.stack.len(),
+            self.print_stack_tiny(),
+            0,
+            0,
+            self.rem
+        );
+        true
     }
 }
 
