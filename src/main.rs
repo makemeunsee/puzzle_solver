@@ -3,6 +3,7 @@ mod constraints;
 mod volume;
 
 use log::info;
+use std::collections::HashMap;
 use three_d::*;
 
 pub fn main() {
@@ -10,11 +11,10 @@ pub fn main() {
 
     constraints::solve();
 
-    let mut solver = volume::solver();
-    while !solver.done() && solver.step() {
-        // TODO visualize it
-    }
-    info!("solved, {} solutions found", solver.solution_count());
+    // let mut solver = volume::solver();
+    // while !solver.done() && solver.step() {
+    //     // TODO visualize it
+    // }
 
     demo_3d();
 }
@@ -22,7 +22,7 @@ pub fn main() {
 fn demo_3d() {
     let window = Window::new(WindowSettings {
         title: "Shapes!".to_string(),
-        max_size: Some((1280, 720)),
+        max_size: Some((2550, 1440)),
         ..Default::default()
     })
     .unwrap();
@@ -30,7 +30,7 @@ fn demo_3d() {
 
     let mut camera = Camera::new_perspective(
         window.viewport(),
-        vec3(5.0, 2.0, 2.5),
+        vec3(0.0, 10.0, 20.0),
         vec3(0.0, 0.0, 0.0),
         vec3(0.0, 1.0, 0.0),
         degrees(90.0),
@@ -39,101 +39,94 @@ fn demo_3d() {
     );
     let mut control = OrbitControl::new(camera.target(), 1.0, 100.0);
 
-    let mut sphere = Gm::new(
-        Mesh::new(&context, &CpuMesh::sphere(16)),
-        PhysicalMaterial::new_transparent(
-            &context,
-            &CpuMaterial {
-                albedo: Srgba {
-                    r: 255,
-                    g: 0,
-                    b: 0,
-                    a: 200,
-                },
-                ..Default::default()
-            },
-        ),
-    );
-    sphere.set_transformation(Mat4::from_translation(vec3(0.0, 1.3, 0.0)) * Mat4::from_scale(0.2));
-    let mut cylinder = Gm::new(
-        Mesh::new(&context, &CpuMesh::cylinder(16)),
-        PhysicalMaterial::new_transparent(
-            &context,
-            &CpuMaterial {
-                albedo: Srgba {
-                    r: 0,
-                    g: 255,
-                    b: 0,
-                    a: 200,
-                },
-                ..Default::default()
-            },
-        ),
-    );
-    cylinder
-        .set_transformation(Mat4::from_translation(vec3(1.3, 0.0, 0.0)) * Mat4::from_scale(0.2));
-    let mut cube = Gm::new(
-        Mesh::new(&context, &CpuMesh::cube()),
-        PhysicalMaterial::new_transparent(
-            &context,
-            &CpuMaterial {
-                albedo: Srgba {
-                    r: 0,
-                    g: 0,
-                    b: 255,
-                    a: 100,
-                },
-                ..Default::default()
-            },
-        ),
-    );
-    cube.set_transformation(Mat4::from_translation(vec3(0.0, 0.0, 1.3)) * Mat4::from_scale(0.2));
-    let axes = Axes::new(&context, 0.1, 2.0);
-    let bounding_box_sphere = Gm::new(
-        BoundingBox::new(&context, sphere.aabb()),
-        ColorMaterial {
-            color: Srgba::BLACK,
-            ..Default::default()
-        },
-    );
-    let bounding_box_cube = Gm::new(
-        BoundingBox::new(&context, cube.aabb()),
-        ColorMaterial {
-            color: Srgba::BLACK,
-            ..Default::default()
-        },
-    );
-    let bounding_box_cylinder = Gm::new(
-        BoundingBox::new(&context, cylinder.aabb()),
-        ColorMaterial {
-            color: Srgba::BLACK,
-            ..Default::default()
-        },
-    );
-
     let light0 = DirectionalLight::new(&context, 1.0, Srgba::WHITE, vec3(0.0, -0.5, -0.5));
     let light1 = DirectionalLight::new(&context, 1.0, Srgba::WHITE, vec3(0.0, 0.5, 0.5));
+
+    let colors = HashMap::from([
+        (0, (255, 0, 0)),
+        (1, (0, 255, 0)),
+        (2, (0, 0, 255)),
+        (3, (255, 255, 0)),
+        (4, (255, 0, 255)),
+        (5, (0, 255, 255)),
+        (6, (160, 160, 160)),
+        (7, (255, 127, 0)),
+        (8, (160, 80, 0)),
+    ]);
+    let mut solver = volume::solver();
+
+    let mut last_step_time = 0.;
+
+    // TODO controls: start, pause, step, step until sol, speed
 
     window.render_loop(move |mut frame_input| {
         camera.set_viewport(frame_input.viewport);
         control.handle_events(&mut camera, &mut frame_input.events);
 
+        let mut meshes = vec![];
+        for b in &solver.stack() {
+            let color = colors[&b.1];
+            let mesh = block(
+                &context,
+                b.0.height as f32,
+                b.0.width as f32,
+                b.0.depth as f32,
+                b.2 as f32,
+                b.3 as f32,
+                b.4 as f32,
+                color.0,
+                color.1,
+                color.2,
+            );
+            meshes.push(mesh);
+        }
+
         frame_input
             .screen()
             .clear(ClearState::color_and_depth(0.8, 0.8, 0.8, 1.0, 1.0))
-            .render(
-                &camera,
-                sphere
-                    .into_iter()
-                    .chain(&cylinder)
-                    .chain(&cube)
-                    .chain(&axes)
-                    .chain(&bounding_box_sphere)
-                    .chain(&bounding_box_cube)
-                    .chain(&bounding_box_cylinder),
-                &[&light0, &light1],
-            );
+            .render(&camera, &meshes, &[&light0, &light1]);
+
+        let delta = frame_input.accumulated_time - last_step_time;
+        if !solver.done() && delta >= 50. {
+            solver.step();
+            last_step_time = frame_input.accumulated_time;
+            if solver.done() {
+                info!("solved, {} solutions found", solver.solution_count());
+            }
+        }
 
         FrameOutput::default()
     });
+}
+
+fn block(
+    context: &Context,
+    h: f32,
+    w: f32,
+    d: f32,
+    x: f32,
+    y: f32,
+    z: f32,
+    r: u8,
+    g: u8,
+    b: u8,
+) -> Gm<Mesh, PhysicalMaterial> {
+    let mut cube = Gm::new(
+        Mesh::new(context, &CpuMesh::cube()),
+        PhysicalMaterial::new_transparent(
+            context,
+            &CpuMaterial {
+                albedo: Srgba { r, g, b, a: 150 },
+                emissive: Srgba { r, g, b, a: 150 },
+                ..Default::default()
+            },
+        ),
+    );
+    cube.set_transformation(
+        Mat4::from_translation(vec3(x - 6.0, y - 5.5, z - 4.5)) // puzzle is 12x11x9 -> center
+            * Mat4::from_nonuniform_scale(h, w, d)
+            * Mat4::from_scale(0.5)
+            * Mat4::from_translation(vec3(1., 1., 1.)),
+    );
+    cube
 }

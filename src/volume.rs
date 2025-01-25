@@ -249,7 +249,7 @@ fn all_rots(block: &Block) -> [Block; ROT_COUNT] {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct BlockInPlace {
+pub struct BlockInPlace {
     // the index of a block row within a reference [[Block]] 2D array
     block_id: usize,
     // the index of a rotation within a reference [Block] array
@@ -277,6 +277,25 @@ pub struct Solver {
 }
 
 impl Solver {
+    pub fn stack(&self) -> Vec<(&Block, usize, usize, usize, usize)> {
+        let slice_area = self.puzzle_height * self.puzzle_width;
+        self.stack
+            .iter()
+            .map(|bip| {
+                let x = bip.position % self.puzzle_height;
+                let y = (bip.position % slice_area) / self.puzzle_height;
+                let z = bip.position / slice_area;
+                (
+                    &self.rot_blocks[bip.block_id][bip.rot_id],
+                    bip.block_id,
+                    x,
+                    y,
+                    z,
+                )
+            })
+            .collect_vec()
+    }
+
     pub fn solution_count(&self) -> u64 {
         self.count
     }
