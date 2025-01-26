@@ -334,6 +334,15 @@ impl Solver {
         self.done
     }
 
+    pub fn step_to_solution(&mut self) -> bool {
+        while self.step() {
+            if self.stack.len() == self.block_count {
+                return true;
+            }
+        }
+        false
+    }
+
     pub fn step(&mut self) -> bool {
         trace!("step");
         if !self.rem.is_empty() {

@@ -30,6 +30,24 @@ fn demo_3d() {
     );
     let mut control = OrbitControl::new(camera.target(), 1.0, 100.0);
 
+    let mut pbox = Gm::new(
+        Mesh::new(&context, &CpuMesh::cube()),
+        PhysicalMaterial::new(&context, &CpuMaterial::default()),
+    );
+    pbox.set_transformation(
+        Mat4::from_translation(vec3(-6.0, -5.5,  -4.5)) // puzzle is 12x11x9 -> center
+            * Mat4::from_nonuniform_scale(12., 11., 9.)
+            * Mat4::from_scale(0.5)
+            * Mat4::from_translation(vec3(1., 1., 1.)),
+    );
+    let bounding_box = Gm::new(
+        BoundingBox::new(&context, pbox.aabb()),
+        ColorMaterial {
+            color: Srgba::BLACK,
+            ..Default::default()
+        },
+    );
+
     let colors = HashMap::from([
         (0, (255, 0, 0)),
         (1, (0, 255, 0)),
@@ -45,8 +63,9 @@ fn demo_3d() {
 
     let mut last_step_time = 0.;
     let mut step_freq = 20;
-
-    // TODO controls: start, pause, step, step until sol, speed
+    let mut solving = false;
+    let mut step_once = false;
+    let mut step_to_sol = false;
 
     let mut gui = three_d::GUI::new(&context);
     window.render_loop(move |mut frame_input| {
@@ -62,12 +81,17 @@ fn demo_3d() {
                     use three_d::egui::*;
                     ui.heading("Control Panel");
                     ui.add(Slider::new(&mut step_freq, 1..=120).text("Speed"));
-                    // ui.add(Checkbox::new(&mut is_instanced, "Use Instancing"));
-                    // ui.add(Label::new(
-                    //     "Increase the cube count until the cubes don't rotate \
-                    //                    smoothly anymore, then toggle on instancing. The rotations \
-                    //                    should become smooth again.",
-                    // ));
+                    if ui.add(Button::new("Play")).clicked() {
+                        solving = true;
+                    };
+                    if ui.add(Button::new("Pause")).clicked() {
+                        solving = false;
+                    };
+                    if ui.add(Button::new("Step once")).clicked() {
+                        step_once = true;
+                        solving = false;
+                    };
+                    ui.add(Checkbox::new(&mut step_to_sol, "Step to solutions only"));
                 });
                 panel_width = gui_context.used_rect().width();
             },
@@ -105,17 +129,24 @@ fn demo_3d() {
             .screen()
             .clear(ClearState::color_and_depth(0.8, 0.8, 0.8, 1.0, 1.0))
             .render(&camera, &meshes, &[]);
+        frame_input.screen().render(&camera, &bounding_box, &[]);
+        frame_input.screen().write(|| gui.render()).unwrap();
 
-        let delta = frame_input.accumulated_time - last_step_time;
-        if !solver.done() && (step_freq == 120 || delta >= 1000. / step_freq as f64) {
-            solver.step();
-            last_step_time = frame_input.accumulated_time;
-            if solver.done() {
-                info!("solved, {} solutions found", solver.solution_count());
+        if solving || step_once {
+            step_once = false;
+            let delta = frame_input.accumulated_time - last_step_time;
+            if !solver.done() && (step_freq == 120 || delta >= 1000. / step_freq as f64) {
+                if step_to_sol {
+                    solver.step_to_solution();
+                } else {
+                    solver.step();
+                }
+                last_step_time = frame_input.accumulated_time;
+                if solver.done() {
+                    info!("solved, {} solutions found", solver.solution_count());
+                }
             }
         }
-
-        frame_input.screen().write(|| gui.render()).unwrap();
 
         FrameOutput::default()
     });
@@ -133,7 +164,7 @@ fn block(
     g: u8,
     b: u8,
 ) -> Gm<Mesh, PhysicalMaterial> {
-    let mut cube = Gm::new(
+    let mut block = Gm::new(
         Mesh::new(context, &CpuMesh::cube()),
         PhysicalMaterial::new_transparent(
             context,
@@ -144,11 +175,11 @@ fn block(
             },
         ),
     );
-    cube.set_transformation(
+    block.set_transformation(
         Mat4::from_translation(vec3(x - 6.0, y - 5.5, z - 4.5)) // puzzle is 12x11x9 -> center
             * Mat4::from_nonuniform_scale(h, w, d)
             * Mat4::from_scale(0.5)
             * Mat4::from_translation(vec3(1., 1., 1.)),
     );
-    cube
+    block
 }
