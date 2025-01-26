@@ -30,9 +30,6 @@ fn demo_3d() {
     );
     let mut control = OrbitControl::new(camera.target(), 1.0, 100.0);
 
-    let light0 = DirectionalLight::new(&context, 1.0, Srgba::WHITE, vec3(0.0, -0.5, -0.5));
-    let light1 = DirectionalLight::new(&context, 1.0, Srgba::WHITE, vec3(0.0, 0.5, 0.5));
-
     let colors = HashMap::from([
         (0, (255, 0, 0)),
         (1, (0, 255, 0)),
@@ -47,11 +44,43 @@ fn demo_3d() {
     let mut solver = volume::solver();
 
     let mut last_step_time = 0.;
+    let mut step_freq = 20;
 
     // TODO controls: start, pause, step, step until sol, speed
 
+    let mut gui = three_d::GUI::new(&context);
     window.render_loop(move |mut frame_input| {
-        camera.set_viewport(frame_input.viewport);
+        let mut panel_width = 0.0;
+        gui.update(
+            &mut frame_input.events,
+            frame_input.accumulated_time,
+            frame_input.viewport,
+            frame_input.device_pixel_ratio,
+            |gui_context| {
+                use three_d::egui::*;
+                SidePanel::left("side_panel").show(gui_context, |ui| {
+                    use three_d::egui::*;
+                    ui.heading("Control Panel");
+                    ui.add(Slider::new(&mut step_freq, 1..=120).text("Speed"));
+                    // ui.add(Checkbox::new(&mut is_instanced, "Use Instancing"));
+                    // ui.add(Label::new(
+                    //     "Increase the cube count until the cubes don't rotate \
+                    //                    smoothly anymore, then toggle on instancing. The rotations \
+                    //                    should become smooth again.",
+                    // ));
+                });
+                panel_width = gui_context.used_rect().width();
+            },
+        );
+        let viewport = Viewport {
+            x: (panel_width * frame_input.device_pixel_ratio) as i32,
+            y: 0,
+            width: frame_input.viewport.width
+                - (panel_width * frame_input.device_pixel_ratio) as u32,
+            height: frame_input.viewport.height,
+        };
+        camera.set_viewport(viewport);
+
         control.handle_events(&mut camera, &mut frame_input.events);
 
         let mut meshes = vec![];
@@ -75,16 +104,18 @@ fn demo_3d() {
         frame_input
             .screen()
             .clear(ClearState::color_and_depth(0.8, 0.8, 0.8, 1.0, 1.0))
-            .render(&camera, &meshes, &[&light0, &light1]);
+            .render(&camera, &meshes, &[]);
 
         let delta = frame_input.accumulated_time - last_step_time;
-        if !solver.done() && delta >= 250. {
+        if !solver.done() && (step_freq == 120 || delta >= 1000. / step_freq as f64) {
             solver.step();
             last_step_time = frame_input.accumulated_time;
             if solver.done() {
                 info!("solved, {} solutions found", solver.solution_count());
             }
         }
+
+        frame_input.screen().write(|| gui.render()).unwrap();
 
         FrameOutput::default()
     });
