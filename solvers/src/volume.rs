@@ -241,22 +241,26 @@ fn rot_block(axis: &Dir, block: &Block) -> Block {
     }
 }
 
+// create the rotational variants of a block, treating it as a faceless shape
+// usually 6 variants, possibly fewer:
+// 3 (square base case)
+// 1 (cube case)
 fn shape_rots(block: &Block) -> Vec<Block> {
-    // when treating blocks as blank shapes, only 6 rotations are distinct:
-    let rots_1 = [vec![], vec![Dir::Back], vec![Dir::Right]];
-    let rots_2 = [vec![], vec![Dir::Top]];
+    let rotss = [
+        vec![],
+        vec![Dir::Top],
+        vec![Dir::Back],
+        vec![Dir::Back, Dir::Top],
+        vec![Dir::Right],
+        vec![Dir::Right, Dir::Top],
+    ];
     let mut result = vec![];
-    for rot_1 in &rots_1 {
-        for rot_2 in &rots_2 {
-            let mut res = block.clone();
-            for r in rot_1 {
-                res = rot_block(r, &res);
-            }
-            for r in rot_2 {
-                res = rot_block(r, &res);
-            }
-            result.push(res);
+    for rots in &rotss {
+        let mut res = block.clone();
+        for rot in rots {
+            res = rot_block(rot, &res);
         }
+        result.push(res);
     }
     result
         // removes invariant rotations:
@@ -265,29 +269,31 @@ fn shape_rots(block: &Block) -> Vec<Block> {
         .collect_vec()
 }
 
+// create the 24 rotational variants of a block
 fn all_rots(block: &Block) -> Vec<Block> {
-    let rots_1 = [
-        vec![],
-        vec![Dir::Front],
-        vec![Dir::Back],
-        vec![Dir::Right],
-        vec![Dir::Left],
-        vec![Dir::Left, Dir::Left],
-    ];
-    let rots_2 = [
+    // order matters! some optimisation relies on it, see `move_sideway_or_backtrack`
+    let rotss_1 = [
         vec![],
         vec![Dir::Top],
+        vec![Dir::Back],
+        vec![Dir::Back, Dir::Top],
+        vec![Dir::Right],
+        vec![Dir::Right, Dir::Top],
+    ];
+    let rotss_2 = [
+        vec![],
         vec![Dir::Top, Dir::Top],
-        vec![Dir::Bottom],
+        vec![Dir::Right, Dir::Right],
+        vec![Dir::Back, Dir::Back],
     ];
     let mut result = vec![];
-    for rot_1 in &rots_1 {
-        for rot_2 in &rots_2 {
+    for rots_1 in &rotss_1 {
+        for rots_2 in &rotss_2 {
             let mut res = block.clone();
-            for r in rot_1 {
+            for r in rots_1 {
                 res = rot_block(r, &res);
             }
-            for r in rot_2 {
+            for r in rots_2 {
                 res = rot_block(r, &res);
             }
             result.push(res);
@@ -397,37 +403,37 @@ impl Solver {
         false
     }
 
+    fn trace_deeper(&self) {
+        let bip = self.stack.last().unwrap();
+        trace!(
+            "deeper ({}={}), new block {} {}, rot {} - rem {:?}",
+            self.stack.len(),
+            self.print_stack_tiny(),
+            bip.block_id,
+            self.rot_blocks[bip.block_id][bip.rot_id].label,
+            bip.rot_id,
+            self.rem
+        );
+    }
+
     pub fn step(&mut self) -> bool {
         trace!("step");
         if !self.rem.is_empty() {
             trace!("deeper?");
             // case 1:
             // try to go deeper (place a new block)
+            // note: sorting is not necessary, but convenient when tracing the execution
             let rem = self.rem.clone().into_iter().sorted().collect_vec();
             for block_id in rem {
                 for rot_id in 0..self.rot_blocks[block_id].len() {
                     if self.deeper(block_id, rot_id) {
-                        trace!(
-                            "deeper ({}={}), new block {} {}, rot {} - rem {:?}",
-                            self.stack.len(),
-                            self.print_stack_tiny(),
-                            block_id,
-                            self.rot_blocks[block_id][rot_id].label,
-                            rot_id,
-                            self.rem
-                        );
+                        self.trace_deeper();
                         return true;
-                    } else {
-                        trace!(
-                            "skipped block {} {}, rot {} (doesnt fit)",
-                            block_id,
-                            self.rot_blocks[block_id][rot_id].label,
-                            rot_id
-                        );
                     }
                 }
             }
         }
+
         trace!("not deeper, sideway?");
         // cant place a new block ->
         loop {
@@ -460,8 +466,16 @@ impl Solver {
         self.position = position;
         self.rem.insert(block_id);
 
+        let mut limit = self.rot_blocks[block_id].len();
+
+        // discard rotational invariants:
+        // limit the possible rotations of the 1st block
+        if self.target.is_some() && self.stack.is_empty() {
+            limit /= 4; // ugly assumption: rotations must be conveniently ordered
+        };
+
         // try placing again the same block, with a different rot
-        for rot_id in rot_id + 1..self.rot_blocks[block_id].len() {
+        for rot_id in rot_id + 1..limit {
             if self.deeper(block_id, rot_id) {
                 trace!(
                     "sideway a ({}={}), new block {}, rot {} - rem {:?}",
@@ -522,36 +536,30 @@ impl Solver {
         let z_start = position / slice_area;
         let z_end = z_start + block.depth as usize;
 
+        let mut clean_face = |dir: Dir| {
+            let idx = dir as usize;
+            self.face_sums[idx] -= block.faces[idx].value;
+            self.face_free_areas[idx] += block.faces[idx].area();
+        };
+
         if self.target.is_some() {
             if x_start == 0 {
-                let idx = Dir::Bottom as usize;
-                self.face_sums[idx] -= block.faces[idx].value;
-                self.face_free_areas[idx] += block.faces[idx].area();
+                clean_face(Dir::Bottom);
             }
             if x_end == self.puzzle_height {
-                let idx = Dir::Top as usize;
-                self.face_sums[idx] -= block.faces[idx].value;
-                self.face_free_areas[idx] += block.faces[idx].area();
+                clean_face(Dir::Top);
             }
             if y_start == 0 {
-                let idx = Dir::Left as usize;
-                self.face_sums[idx] -= block.faces[idx].value;
-                self.face_free_areas[idx] += block.faces[idx].area();
+                clean_face(Dir::Left);
             }
             if y_end == self.puzzle_width {
-                let idx = Dir::Right as usize;
-                self.face_sums[idx] -= block.faces[idx].value;
-                self.face_free_areas[idx] += block.faces[idx].area();
+                clean_face(Dir::Right);
             }
             if z_start == 0 {
-                let idx = Dir::Front as usize;
-                self.face_sums[idx] -= block.faces[idx].value;
-                self.face_free_areas[idx] += block.faces[idx].area();
+                clean_face(Dir::Front);
             }
             if z_end == self.puzzle_depth {
-                let idx = Dir::Back as usize;
-                self.face_sums[idx] -= block.faces[idx].value;
-                self.face_free_areas[idx] += block.faces[idx].area();
+                clean_face(Dir::Back);
             }
         }
     }
@@ -893,36 +901,30 @@ impl Solver {
                 }
             }
         }
+
         if self.target.is_some() {
-            if x_start == 0 {
-                let idx = Dir::Bottom as usize;
+            let mut add_block_to_face = |dir: Dir| {
+                let idx = dir as usize;
                 self.face_sums[idx] += block.faces[idx].value;
                 self.face_free_areas[idx] -= block.faces[idx].area();
+            };
+            if x_start == 0 {
+                add_block_to_face(Dir::Bottom);
             }
             if x_end == self.puzzle_height {
-                let idx = Dir::Top as usize;
-                self.face_sums[idx] += block.faces[idx].value;
-                self.face_free_areas[idx] -= block.faces[idx].area();
+                add_block_to_face(Dir::Top);
             }
             if y_start == 0 {
-                let idx = Dir::Left as usize;
-                self.face_sums[idx] += block.faces[idx].value;
-                self.face_free_areas[idx] -= block.faces[idx].area();
+                add_block_to_face(Dir::Left);
             }
             if y_end == self.puzzle_width {
-                let idx = Dir::Right as usize;
-                self.face_sums[idx] += block.faces[idx].value;
-                self.face_free_areas[idx] -= block.faces[idx].area();
+                add_block_to_face(Dir::Right);
             }
             if z_start == 0 {
-                let idx = Dir::Front as usize;
-                self.face_sums[idx] += block.faces[idx].value;
-                self.face_free_areas[idx] -= block.faces[idx].area();
+                add_block_to_face(Dir::Front);
             }
             if z_end == self.puzzle_depth {
-                let idx = Dir::Back as usize;
-                self.face_sums[idx] += block.faces[idx].value;
-                self.face_free_areas[idx] -= block.faces[idx].area();
+                add_block_to_face(Dir::Back);
             }
         }
 
