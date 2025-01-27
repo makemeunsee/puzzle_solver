@@ -4,21 +4,27 @@ use crate::common::{Block, Dir, Face, BLOCK_COUNT, DEPTH, HEIGHT, WIDTH};
 use itertools::Itertools;
 use log::{debug, trace};
 
-pub fn solver() -> Solver {
+pub fn solver(shape_only: bool) -> Solver {
     let height = HEIGHT as usize;
     let width = WIDTH as usize;
     let depth = DEPTH as usize;
     let volume = height * width * depth;
-    let rot_blocks = crate::common::BLOCKS
-        .iter()
-        .map(|block| shape_rots(block).to_vec())
-        // .map(|block| all_rots(block).to_vec())
-        .collect_vec();
+    let (rot_blocks, target) = if shape_only {
+        (
+            crate::common::BLOCKS.iter().map(shape_rots).collect_vec(),
+            None,
+        )
+    } else {
+        (
+            crate::common::BLOCKS.iter().map(all_rots).collect_vec(),
+            Some(100),
+        )
+    };
     let mut solver = Solver {
         puzzle_height: height,
         puzzle_width: width,
         puzzle_depth: depth,
-        target: None,
+        target,
         rot_blocks,
         stack: vec![],
         rem: HashSet::from_iter(0..BLOCK_COUNT),
@@ -34,7 +40,7 @@ pub fn solver() -> Solver {
             WIDTH * DEPTH,
         ],
         done: false,
-        count: 0,
+        solutions: HashSet::new(),
     };
     solver.init();
     solver
@@ -260,9 +266,6 @@ fn shape_rots(block: &Block) -> Vec<Block> {
 }
 
 fn all_rots(block: &Block) -> Vec<Block> {
-    // if treating blocks as blank, only 6 rotations are distinct:
-    // let rots_1 = [vec![], vec![Dir::Back], vec![Dir::Right]];
-    // let rots_2 = [vec![], vec![Dir::Top]];
     let rots_1 = [
         vec![],
         vec![Dir::Front],
@@ -275,7 +278,7 @@ fn all_rots(block: &Block) -> Vec<Block> {
         vec![],
         vec![Dir::Top],
         vec![Dir::Top, Dir::Top],
-        vec![Dir::Back],
+        vec![Dir::Bottom],
     ];
     let mut result = vec![];
     for rot_1 in &rots_1 {
@@ -291,13 +294,9 @@ fn all_rots(block: &Block) -> Vec<Block> {
         }
     }
     result
-    // to remove invariant rotations:
-    // .into_iter()
-    // .unique_by(|b| (b.height, b.width, b.depth))
-    // .collect_vec()
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BlockInPuzzle {
     // the index of a block row within a reference [[Block]] 2D array
     block_id: usize,
@@ -323,7 +322,7 @@ pub struct Solver {
     face_sums: [u8; 6],
     face_free_areas: [u8; 6],
     done: bool,
-    count: u64,
+    solutions: HashSet<Vec<BlockInPuzzle>>,
 }
 
 impl Solver {
@@ -350,35 +349,35 @@ impl Solver {
             .collect_vec()
     }
 
-    pub fn solution_count(&self) -> u64 {
-        self.count
+    pub fn solutions(&self) -> Vec<String> {
+        self.solutions
+            .iter()
+            .map(|sol| {
+                print_state(
+                    self.puzzle_height,
+                    self.puzzle_width,
+                    self.puzzle_depth,
+                    &self.rot_blocks,
+                    &sol.iter().map(|x| Some(*x)).collect_vec(),
+                )
+            })
+            .collect_vec()
     }
 
     fn print_state(&self) -> String {
-        let mut result = String::new();
-        let mut idx = 0;
-        for _ in 0..self.puzzle_depth {
-            for _ in 0..self.puzzle_width {
-                for _ in 0..self.puzzle_height {
-                    result.push_str(&format!(
-                        "{} ",
-                        self.state[idx]
-                            .map(|b| format!("{:0>2}", b.block_id))
-                            .unwrap_or("".to_string())
-                    ));
-                    idx += 1;
-                }
-                result.push('\n');
-            }
-            result.push('\n');
-        }
-        result
+        print_state(
+            self.puzzle_height,
+            self.puzzle_width,
+            self.puzzle_depth,
+            &self.rot_blocks,
+            &self.state,
+        )
     }
 
     fn print_stack_tiny(&self) -> String {
         let mut result = "[ ".to_string();
-        for block in &self.stack {
-            result.push_str(&format!("{} ", block.block_id));
+        for bip in &self.stack {
+            result.push_str(&format!("({}, {}) ", bip.block_id, bip.rot_id));
         }
         result.push_str("] - sums: ");
         result.push_str(&format!("{:?}", self.face_sums));
@@ -598,12 +597,10 @@ impl Solver {
                 self.rem.remove(&block_id);
                 self.position = new_position;
                 if self.position == self.puzzle_height * self.puzzle_width * self.puzzle_depth {
-                    debug!(
-                        "solution:\n{}\n{}",
-                        self.print_state(),
-                        self.print_stack_tiny()
-                    );
-                    self.count += 1;
+                    let solution = self.print_state();
+                    debug!("solution:\n{}\n{}", &solution, self.print_stack_tiny());
+                    self.solutions
+                        .insert(self.state.iter().map(|mbip| mbip.unwrap()).collect_vec());
                 }
                 true
             }
@@ -941,6 +938,121 @@ impl Solver {
     }
 }
 
+fn print_state(
+    puzzle_height: usize,
+    puzzle_width: usize,
+    puzzle_depth: usize,
+    rot_blocks: &[Vec<Block>],
+    state: &[Option<BlockInPuzzle>],
+) -> String {
+    let slice_area = puzzle_height * puzzle_width;
+
+    let mut result = String::new();
+
+    result.push_str("Front:\n");
+    for i in (0..puzzle_height).rev() {
+        for j in 0..puzzle_width {
+            let idx = j * puzzle_height + i;
+            result.push_str(&format!(
+                "{} ",
+                state[idx]
+                    .map(|b| format!(
+                        "{:0>2}",
+                        rot_blocks[b.block_id][b.rot_id].faces[Dir::Front as usize].value
+                    ))
+                    .unwrap_or("".to_string())
+            ));
+        }
+        result.push('\n');
+    }
+
+    result.push_str("Back:\n");
+    for i in (0..puzzle_height).rev() {
+        for j in (0..puzzle_width).rev() {
+            let idx = (puzzle_depth - 1) * slice_area + j * puzzle_height + i;
+            result.push_str(&format!(
+                "{} ",
+                state[idx]
+                    .map(|b| format!(
+                        "{:0>2}",
+                        rot_blocks[b.block_id][b.rot_id].faces[Dir::Back as usize].value
+                    ))
+                    .unwrap_or("".to_string())
+            ));
+        }
+        result.push('\n');
+    }
+
+    result.push_str("Left:\n");
+    for i in (0..puzzle_height).rev() {
+        for k in (0..puzzle_depth).rev() {
+            let idx = k * slice_area + i;
+            result.push_str(&format!(
+                "{} ",
+                state[idx]
+                    .map(|b| format!(
+                        "{:0>2}",
+                        rot_blocks[b.block_id][b.rot_id].faces[Dir::Left as usize].value
+                    ))
+                    .unwrap_or("".to_string())
+            ));
+        }
+        result.push('\n');
+    }
+
+    result.push_str("Right:\n");
+    for i in (0..puzzle_height).rev() {
+        for k in 0..puzzle_depth {
+            let idx = k * slice_area + (puzzle_width - 1) * puzzle_height + i;
+            result.push_str(&format!(
+                "{} ",
+                state[idx]
+                    .map(|b| format!(
+                        "{:0>2}",
+                        rot_blocks[b.block_id][b.rot_id].faces[Dir::Right as usize].value
+                    ))
+                    .unwrap_or("".to_string())
+            ));
+        }
+        result.push('\n');
+    }
+
+    result.push_str("Top:\n");
+    for k in (0..puzzle_depth).rev() {
+        for j in 0..puzzle_width {
+            let idx = k * slice_area + j * puzzle_height + puzzle_height - 1;
+            result.push_str(&format!(
+                "{} ",
+                state[idx]
+                    .map(|b| format!(
+                        "{:0>2}",
+                        rot_blocks[b.block_id][b.rot_id].faces[Dir::Top as usize].value
+                    ))
+                    .unwrap_or("".to_string())
+            ));
+        }
+        result.push('\n');
+    }
+
+    result.push_str("Bottom:\n");
+    for k in 0..puzzle_depth {
+        for j in 0..puzzle_width {
+            let idx = k * slice_area + j * puzzle_height;
+            result.push_str(&format!(
+                "{} ",
+                state[idx]
+                    .map(|b| format!(
+                        "{:0>2}",
+                        rot_blocks[b.block_id][b.rot_id].faces[Dir::Bottom as usize].value
+                    ))
+                    .unwrap_or("".to_string())
+            ));
+        }
+        result.push('\n');
+    }
+
+    result
+}
 #[cfg(test)]
 mod test {
     use super::*;
@@ -1009,11 +1121,11 @@ mod test {
             face_sums: [0; 6],
             face_free_areas: [4, 4, 2, 2, 2, 2],
             done: false,
-            count: 0,
+            solutions: HashSet::new(),
         };
         solver.init();
         while !solver.done() && solver.step() {}
-        assert_eq!(solver.solution_count(), 4);
+        assert_eq!(solver.solutions.len(), 4);
     }
 
     #[test]
@@ -1061,10 +1173,201 @@ mod test {
             face_sums: [0; 6],
             face_free_areas: [4, 4, 4, 4, 4, 4],
             done: false,
-            count: 0,
+            solutions: HashSet::new(),
         };
         solver.init();
         while !solver.done() && solver.step() {}
-        assert_eq!(solver.solution_count(), 216);
+        assert_eq!(solver.solutions.len(), 216);
+    }
+
+    #[test]
+    fn all_rots_creates_24_distinct_blocks() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        let block = Block {
+            height: 3,
+            width: 2,
+            depth: 1,
+            faces: [
+                Face {
+                    value: 0,
+                    long: 3,
+                    short: 2,
+                    block: 0,
+                    dir: Dir::Front,
+                },
+                Face {
+                    value: 1,
+                    long: 3,
+                    short: 2,
+                    block: 0,
+                    dir: Dir::Back,
+                },
+                Face {
+                    value: 2,
+                    long: 3,
+                    short: 1,
+                    block: 0,
+                    dir: Dir::Left,
+                },
+                Face {
+                    value: 3,
+                    long: 3,
+                    short: 1,
+                    block: 0,
+                    dir: Dir::Right,
+                },
+                Face {
+                    value: 4,
+                    long: 2,
+                    short: 1,
+                    block: 0,
+                    dir: Dir::Top,
+                },
+                Face {
+                    value: 5,
+                    long: 2,
+                    short: 1,
+                    block: 0,
+                    dir: Dir::Bottom,
+                },
+            ],
+            label: "U",
+        };
+
+        let rots = all_rots(&block);
+        let set: HashSet<Block> = HashSet::from_iter(rots);
+        assert_eq!(set.len(), 24);
+    }
+
+    #[test]
+    fn solve_2x_2x1x1_in_2x2x1_to_sum() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        let block_a = Block {
+            height: 2,
+            width: 1,
+            depth: 1,
+            faces: [
+                Face {
+                    value: 9,
+                    long: 2,
+                    short: 1,
+                    block: 0,
+                    dir: Dir::Front,
+                },
+                Face {
+                    value: 8,
+                    long: 2,
+                    short: 1,
+                    block: 0,
+                    dir: Dir::Back,
+                },
+                Face {
+                    value: 12,
+                    long: 2,
+                    short: 1,
+                    block: 0,
+                    dir: Dir::Left,
+                },
+                Face {
+                    value: 14,
+                    long: 2,
+                    short: 1,
+                    block: 0,
+                    dir: Dir::Right,
+                },
+                Face {
+                    value: 6,
+                    long: 1,
+                    short: 1,
+                    block: 0,
+                    dir: Dir::Top,
+                },
+                Face {
+                    value: 7,
+                    long: 1,
+                    short: 1,
+                    block: 0,
+                    dir: Dir::Bottom,
+                },
+            ],
+            label: "A",
+        };
+
+        let block_b = Block {
+            height: 2,
+            width: 1,
+            depth: 1,
+            faces: [
+                Face {
+                    value: 3,
+                    long: 2,
+                    short: 1,
+                    block: 0,
+                    dir: Dir::Front,
+                },
+                Face {
+                    value: 4,
+                    long: 2,
+                    short: 1,
+                    block: 0,
+                    dir: Dir::Back,
+                },
+                Face {
+                    value: 13,
+                    long: 2,
+                    short: 1,
+                    block: 0,
+                    dir: Dir::Left,
+                },
+                Face {
+                    value: 12,
+                    long: 2,
+                    short: 1,
+                    block: 0,
+                    dir: Dir::Right,
+                },
+                Face {
+                    value: 6,
+                    long: 1,
+                    short: 1,
+                    block: 0,
+                    dir: Dir::Top,
+                },
+                Face {
+                    value: 5,
+                    long: 1,
+                    short: 1,
+                    block: 0,
+                    dir: Dir::Bottom,
+                },
+            ],
+            label: "B",
+        };
+
+        let rot_blocks = [block_a, block_b]
+            .into_iter()
+            .map(|block| all_rots(&block).to_vec())
+            .collect_vec();
+
+        let mut solver = Solver {
+            puzzle_height: 2,
+            puzzle_width: 2,
+            puzzle_depth: 1,
+            target: Some(12),
+            rot_blocks,
+            stack: vec![],
+            rem: HashSet::from_iter(0..2),
+            position: 0,
+            state: vec![None; 4],
+            face_sums: [0; 6],
+            face_free_areas: [4, 4, 2, 2, 2, 2],
+            done: false,
+            solutions: HashSet::new(),
+        };
+        solver.init();
+        while !solver.done() && solver.step() {}
+        assert_eq!(solver.solutions.len(), 8);
     }
 }

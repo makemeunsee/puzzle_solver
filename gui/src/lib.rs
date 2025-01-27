@@ -1,16 +1,9 @@
 use log::info;
+use solvers::volume;
 use std::collections::HashMap;
 use three_d::*;
 
-use crate::{constraints, volume};
-
-pub fn run() {
-    constraints::solve();
-
-    demo_3d();
-}
-
-fn demo_3d() {
+pub fn demo_3d() {
     let window = Window::new(WindowSettings {
         title: "Shapes!".to_string(),
         max_size: Some((2550, 1440)), // TODO make it smaller for web?
@@ -59,7 +52,7 @@ fn demo_3d() {
         (7, (255, 127, 0)),
         (8, (160, 80, 0)),
     ]);
-    let mut solver = volume::solver();
+    let mut solver = volume::solver(true);
 
     let mut last_step_time = 0.;
     let mut step_freq = 20;
@@ -143,7 +136,7 @@ fn demo_3d() {
                 }
                 last_step_time = frame_input.accumulated_time;
                 if solver.done() {
-                    info!("solved, {} solutions found", solver.solution_count());
+                    info!("solved, {} solutions found", solver.solutions().len());
                 }
             }
         }

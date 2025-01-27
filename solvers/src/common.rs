@@ -116,7 +116,7 @@ impl Face {
 }
 
 /// A block of the puzzle
-#[derive(PartialEq, Eq, Debug, Clone)]
+#[derive(PartialEq, Eq, Debug, Clone, Hash)]
 pub struct Block {
     // height >= width >= depth
     pub height: u8,

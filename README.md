@@ -20,10 +20,11 @@ RUST_LOG=info cargo run --release
 ### Web
 
 ```sh
-wasm-pack build --target web --out-name web --out-dir web/pkg
+cd web/
+wasm-pack build --target web --out-name web --out-dir pkg
 ```
 
-Requires a webserver running from `./web` e.g.:
+Requires a webserver running from `web/` e.g.:
 
 ```sh
 python3 -m http.server --bind :: 8080
@@ -39,9 +40,10 @@ The original puzzle (see [specs in the code](src/common.rs)) has:
 * `1074 * 8 * 4^9 = 2'252'341'248` packing solutions in total when considering the face values; factors detail:
     * `8`: `3` blocks have a square base and have one rotation which becomes significant
     * `4^9`: from all `9` blocks, `4` rotations become significant
-* `2` full solutions
+* `2` fully distinct solutions; each solution has actually a twin obtained by flipping a single block, which exposes only one of its faces.
 
 Note: the stats here discount the solutions equivalent rotations of the whole puzzle (`4`).
 The volumic solver still counts them.
+The constraints solver does not distinguish either the 'single block flip twins'.
 
 Note: the stats are 'measured' by running the solvers and may be incorrect due to bugs or design flaws.

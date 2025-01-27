@@ -1,0 +1,17 @@
+[package]
+name = "solvers"
+version = "0.1.0"
+edition = "2021"
+
+# [lib]
+# crate-type = ["lib", "staticlib"]
+
+[dependencies]
+arrayvec = "0.7.6"
+itertools = "0.14.0"
+lazy_static = "1.5.0"
+log = "0.4.25"
+
+[dev-dependencies]
+env_logger = "0.11.6"
+
