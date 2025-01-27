@@ -48,7 +48,7 @@ pub fn demo_3d() {
         (3, (255, 255, 0)),
         (4, (255, 0, 255)),
         (5, (0, 255, 255)),
-        (6, (160, 160, 160)),
+        (6, (110, 110, 110)),
         (7, (255, 127, 0)),
         (8, (160, 80, 0)),
     ]);
@@ -72,6 +72,7 @@ pub fn demo_3d() {
                 use three_d::egui::*;
                 SidePanel::left("side_panel").show(gui_context, |ui| {
                     use three_d::egui::*;
+                    ui.add_space(50.);
                     ui.heading("Control Panel");
                     ui.add(Slider::new(&mut step_freq, 1..=120).text("Speed"));
                     if ui.add(Button::new("Play")).clicked() {
@@ -162,15 +163,15 @@ fn block(
         PhysicalMaterial::new_transparent(
             context,
             &CpuMaterial {
-                albedo: Srgba { r, g, b, a: 150 },
-                emissive: Srgba { r, g, b, a: 150 },
+                albedo: Srgba::new(r, g, b, 128),
+                emissive: Srgba::new(r, g, b, 50),
                 ..Default::default()
             },
         ),
     );
     block.set_transformation(
         Mat4::from_translation(vec3(x - 6.0, y - 5.5, z - 4.5)) // puzzle is 12x11x9 -> center
-            * Mat4::from_nonuniform_scale(h, w, d)
+            * Mat4::from_nonuniform_scale(h - 0.4, w - 0.4, d - 0.4)
             * Mat4::from_scale(0.5)
             * Mat4::from_translation(vec3(1., 1., 1.)),
     );

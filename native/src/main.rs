@@ -12,4 +12,7 @@ pub fn main() {
         info!("solution:\n{}", solution);
     }
     info!("total solutions: {}", solver.solutions().len());
+
+    // to run the visualization
+    // gui::demo_3d();
 }
