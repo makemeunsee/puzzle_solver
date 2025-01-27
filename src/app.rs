@@ -13,7 +13,7 @@ pub fn run() {
 fn demo_3d() {
     let window = Window::new(WindowSettings {
         title: "Shapes!".to_string(),
-        max_size: Some((2550, 1440)),
+        max_size: Some((2550, 1440)), // TODO make it smaller for web?
         ..Default::default()
     })
     .unwrap();

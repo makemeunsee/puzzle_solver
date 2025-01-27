@@ -36,9 +36,9 @@ Then the web app is accessible at `localhost:8080`.
 The original puzzle (see [specs in the code](src/common.rs)) has:
 
 * `1074` packing solutions when not considering the face values, i.e. as if the blocks were blank
-* `1074 * 8 * 4**9 = ` packing solutions in total when considering the face values; factors detail:
+* `1074 * 8 * 4^9 = 2'252'341'248` packing solutions in total when considering the face values; factors detail:
     * `8`: `3` blocks have a square base and have one rotation which becomes significant
-    * `4**9`: from all `9` blocks, `4` rotations become significant
+    * `4^9`: from all `9` blocks, `4` rotations become significant
 * `2` full solutions
 
 Note: the stats here discount the solutions equivalent rotations of the whole puzzle (`4`).

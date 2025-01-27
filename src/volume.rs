@@ -1,29 +1,38 @@
 use std::collections::HashSet;
 
-use crate::common::{Block, Dir, Face};
+use crate::common::{Block, Dir, Face, BLOCK_COUNT, DEPTH, HEIGHT, WIDTH};
 use itertools::Itertools;
 use log::{debug, trace};
 
 pub fn solver() -> Solver {
-    let height = crate::common::HEIGHT as usize;
-    let width = crate::common::WIDTH as usize;
-    let depth = crate::common::DEPTH as usize;
+    let height = HEIGHT as usize;
+    let width = WIDTH as usize;
+    let depth = DEPTH as usize;
     let volume = height * width * depth;
     let rot_blocks = crate::common::BLOCKS
         .iter()
-        .map(|block| all_rots(block).to_vec())
+        .map(|block| shape_rots(block).to_vec())
+        // .map(|block| all_rots(block).to_vec())
         .collect_vec();
     let mut solver = Solver {
-        block_count: crate::common::BLOCK_COUNT,
-        rot_count: ROT_COUNT,
         puzzle_height: height,
         puzzle_width: width,
         puzzle_depth: depth,
+        target: None,
         rot_blocks,
         stack: vec![],
-        rem: HashSet::from_iter(0..crate::common::BLOCK_COUNT),
+        rem: HashSet::from_iter(0..BLOCK_COUNT),
         position: 0,
         state: vec![None; volume],
+        face_sums: [0; 6],
+        face_free_areas: [
+            HEIGHT * WIDTH,
+            HEIGHT * WIDTH,
+            HEIGHT * DEPTH,
+            HEIGHT * DEPTH,
+            WIDTH * DEPTH,
+            WIDTH * DEPTH,
+        ],
         done: false,
         count: 0,
     };
@@ -226,13 +235,11 @@ fn rot_block(axis: &Dir, block: &Block) -> Block {
     }
 }
 
-// TODO re-enable all 24 rots
-const ROT_COUNT: usize = 6;
-
-fn all_rots(block: &Block) -> [Block; ROT_COUNT] {
+fn shape_rots(block: &Block) -> Vec<Block> {
+    // when treating blocks as blank shapes, only 6 rotations are distinct:
     let rots_1 = [vec![], vec![Dir::Back], vec![Dir::Right]];
     let rots_2 = [vec![], vec![Dir::Top]];
-    let mut result = arrayvec::ArrayVec::<Block, ROT_COUNT>::new();
+    let mut result = vec![];
     for rot_1 in &rots_1 {
         for rot_2 in &rots_2 {
             let mut res = block.clone();
@@ -245,11 +252,53 @@ fn all_rots(block: &Block) -> [Block; ROT_COUNT] {
             result.push(res);
         }
     }
-    result.into_inner().unwrap()
+    result
+        // removes invariant rotations:
+        .into_iter()
+        .unique_by(|b| (b.height, b.width, b.depth))
+        .collect_vec()
+}
+
+fn all_rots(block: &Block) -> Vec<Block> {
+    // if treating blocks as blank, only 6 rotations are distinct:
+    // let rots_1 = [vec![], vec![Dir::Back], vec![Dir::Right]];
+    // let rots_2 = [vec![], vec![Dir::Top]];
+    let rots_1 = [
+        vec![],
+        vec![Dir::Front],
+        vec![Dir::Back],
+        vec![Dir::Right],
+        vec![Dir::Left],
+        vec![Dir::Left, Dir::Left],
+    ];
+    let rots_2 = [
+        vec![],
+        vec![Dir::Top],
+        vec![Dir::Top, Dir::Top],
+        vec![Dir::Back],
+    ];
+    let mut result = vec![];
+    for rot_1 in &rots_1 {
+        for rot_2 in &rots_2 {
+            let mut res = block.clone();
+            for r in rot_1 {
+                res = rot_block(r, &res);
+            }
+            for r in rot_2 {
+                res = rot_block(r, &res);
+            }
+            result.push(res);
+        }
+    }
+    result
+    // to remove invariant rotations:
+    // .into_iter()
+    // .unique_by(|b| (b.height, b.width, b.depth))
+    // .collect_vec()
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct BlockInPlace {
+pub struct BlockInPuzzle {
     // the index of a block row within a reference [[Block]] 2D array
     block_id: usize,
     // the index of a rotation within a reference [Block] array
@@ -259,24 +308,29 @@ pub struct BlockInPlace {
 }
 
 pub struct Solver {
-    block_count: usize,
-    rot_count: usize,
     puzzle_height: usize,
     puzzle_width: usize,
     puzzle_depth: usize,
+    target: Option<u8>,
     rot_blocks: Vec<Vec<Block>>,
-    stack: Vec<BlockInPlace>,
+    stack: Vec<BlockInPuzzle>,
     // ids of blocks still to be stacked
     rem: HashSet<usize>,
     // next position within state where to place a block
     position: usize,
     // 3d array tracking what space of the puzzle is filled with blocks
-    state: Vec<Option<BlockInPlace>>,
+    state: Vec<Option<BlockInPuzzle>>,
+    face_sums: [u8; 6],
+    face_free_areas: [u8; 6],
     done: bool,
     count: u64,
 }
 
 impl Solver {
+    fn block_count(&self) -> usize {
+        self.rot_blocks.len()
+    }
+
     pub fn stack(&self) -> Vec<(&Block, usize, usize, usize, usize)> {
         let slice_area = self.puzzle_height * self.puzzle_width;
         self.stack
@@ -309,8 +363,8 @@ impl Solver {
                     result.push_str(&format!(
                         "{} ",
                         self.state[idx]
-                            .map(|b| self.rot_blocks[b.block_id][b.rot_id].label)
-                            .unwrap_or("")
+                            .map(|b| format!("{:0>2}", b.block_id))
+                            .unwrap_or("".to_string())
                     ));
                     idx += 1;
                 }
@@ -326,7 +380,8 @@ impl Solver {
         for block in &self.stack {
             result.push_str(&format!("{} ", block.block_id));
         }
-        result.push(']');
+        result.push_str("] - sums: ");
+        result.push_str(&format!("{:?}", self.face_sums));
         result
     }
 
@@ -336,7 +391,7 @@ impl Solver {
 
     pub fn step_to_solution(&mut self) -> bool {
         while self.step() {
-            if self.stack.len() == self.block_count {
+            if self.stack.len() == self.block_count() {
                 return true;
             }
         }
@@ -351,19 +406,25 @@ impl Solver {
             // try to go deeper (place a new block)
             let rem = self.rem.clone().into_iter().sorted().collect_vec();
             for block_id in rem {
-                for rot_id in 0..self.rot_count {
+                for rot_id in 0..self.rot_blocks[block_id].len() {
                     if self.deeper(block_id, rot_id) {
                         trace!(
-                            "deeper ({}={}), new block {}, rot {} - rem {:?}",
+                            "deeper ({}={}), new block {} {}, rot {} - rem {:?}",
                             self.stack.len(),
                             self.print_stack_tiny(),
                             block_id,
+                            self.rot_blocks[block_id][rot_id].label,
                             rot_id,
                             self.rem
                         );
                         return true;
                     } else {
-                        trace!("skipped block {}, rot {} (doesnt fit)", block_id, rot_id);
+                        trace!(
+                            "skipped block {} {}, rot {} (doesnt fit)",
+                            block_id,
+                            self.rot_blocks[block_id][rot_id].label,
+                            rot_id
+                        );
                     }
                 }
             }
@@ -396,11 +457,12 @@ impl Solver {
         let rot_id = top.rot_id;
         let position = top.position;
         self.remove_block_from_state(top);
+        self.remove_block_from_face_state(top);
         self.position = position;
         self.rem.insert(block_id);
 
         // try placing again the same block, with a different rot
-        for rot_id in rot_id + 1..self.rot_count {
+        for rot_id in rot_id + 1..self.rot_blocks[block_id].len() {
             if self.deeper(block_id, rot_id) {
                 trace!(
                     "sideway a ({}={}), new block {}, rot {} - rem {:?}",
@@ -416,11 +478,11 @@ impl Solver {
             }
         }
         // try placing a sibling
-        for block_id in block_id + 1..self.block_count {
+        for block_id in block_id + 1..self.block_count() {
             if !self.rem.contains(&block_id) {
                 continue;
             }
-            for rot_id in 0..self.rot_count {
+            for rot_id in 0..self.rot_blocks[block_id].len() {
                 if self.deeper(block_id, rot_id) {
                     trace!(
                         "sideway b ({}={}), new block {}, rot {} - rem {:?}",
@@ -446,9 +508,58 @@ impl Solver {
         false
     }
 
-    fn remove_block_from_state(&mut self, rot_block: BlockInPlace) {
-        let position = rot_block.position;
-        let block = &self.rot_blocks[rot_block.block_id][rot_block.rot_id];
+    fn remove_block_from_face_state(&mut self, bip: BlockInPuzzle) {
+        let block = &self.rot_blocks[bip.block_id][bip.rot_id];
+        let position = bip.position;
+
+        let slice_area = self.puzzle_height * self.puzzle_width;
+
+        let x_start = position % self.puzzle_height;
+        let x_end = x_start + block.height as usize;
+
+        let y_start = (position % slice_area) / self.puzzle_height;
+        let y_end = y_start + block.width as usize;
+
+        let z_start = position / slice_area;
+        let z_end = z_start + block.depth as usize;
+
+        if self.target.is_some() {
+            if x_start == 0 {
+                let idx = Dir::Bottom as usize;
+                self.face_sums[idx] -= block.faces[idx].value;
+                self.face_free_areas[idx] += block.faces[idx].area();
+            }
+            if x_end == self.puzzle_height {
+                let idx = Dir::Top as usize;
+                self.face_sums[idx] -= block.faces[idx].value;
+                self.face_free_areas[idx] += block.faces[idx].area();
+            }
+            if y_start == 0 {
+                let idx = Dir::Left as usize;
+                self.face_sums[idx] -= block.faces[idx].value;
+                self.face_free_areas[idx] += block.faces[idx].area();
+            }
+            if y_end == self.puzzle_width {
+                let idx = Dir::Right as usize;
+                self.face_sums[idx] -= block.faces[idx].value;
+                self.face_free_areas[idx] += block.faces[idx].area();
+            }
+            if z_start == 0 {
+                let idx = Dir::Front as usize;
+                self.face_sums[idx] -= block.faces[idx].value;
+                self.face_free_areas[idx] += block.faces[idx].area();
+            }
+            if z_end == self.puzzle_depth {
+                let idx = Dir::Back as usize;
+                self.face_sums[idx] -= block.faces[idx].value;
+                self.face_free_areas[idx] += block.faces[idx].area();
+            }
+        }
+    }
+
+    fn remove_block_from_state(&mut self, bip: BlockInPuzzle) {
+        let position = bip.position;
+        let block = &self.rot_blocks[bip.block_id][bip.rot_id];
 
         let slice_area = self.puzzle_height * self.puzzle_width;
 
@@ -473,21 +584,13 @@ impl Solver {
 
     // try to go deeper in the solution graph, by placing one more rotated block
     fn deeper(&mut self, block_id: usize, rot_id: usize) -> bool {
-        let block = &self.rot_blocks[block_id][rot_id];
-        match place_3d(
-            self.puzzle_height,
-            self.puzzle_width,
-            self.puzzle_depth,
-            &mut self.state,
-            BlockInPlace {
-                block_id,
-                rot_id,
-                position: self.position,
-            },
-            block,
-        ) {
+        match self.place_3d(BlockInPuzzle {
+            block_id,
+            rot_id,
+            position: self.position,
+        }) {
             Some(new_position) => {
-                self.stack.push(BlockInPlace {
+                self.stack.push(BlockInPuzzle {
                     block_id,
                     rot_id,
                     position: self.position,
@@ -495,7 +598,11 @@ impl Solver {
                 self.rem.remove(&block_id);
                 self.position = new_position;
                 if self.position == self.puzzle_height * self.puzzle_width * self.puzzle_depth {
-                    debug!("solution:\n{}", self.print_state());
+                    debug!(
+                        "solution:\n{}\n{}",
+                        self.print_state(),
+                        self.print_stack_tiny()
+                    );
                     self.count += 1;
                 }
                 true
@@ -517,36 +624,264 @@ impl Solver {
         );
         true
     }
-}
 
-fn place_3d(
-    cuboid_height: usize,
-    cuboid_width: usize,
-    cuboid_depth: usize,
-    state: &mut [Option<BlockInPlace>],
-    block_id: BlockInPlace,
-    block: &Block,
-) -> Option<usize> {
-    let slice_area = cuboid_height * cuboid_width;
+    fn place_3d(&mut self, bip: BlockInPuzzle) -> Option<usize> {
+        let block = &self.rot_blocks[bip.block_id][bip.rot_id];
+        let slice_area = self.puzzle_height * self.puzzle_width;
 
-    let start_point = block_id.position;
+        let start_point = bip.position;
 
-    let x_start = start_point % cuboid_height;
-    let x_end = x_start + block.height as usize;
+        let x_start = start_point % self.puzzle_height;
+        let x_end = x_start + block.height as usize;
 
-    let y_start = (start_point % slice_area) / cuboid_height;
-    let y_end = y_start + block.width as usize;
+        let y_start = (start_point % slice_area) / self.puzzle_height;
+        let y_end = y_start + block.width as usize;
 
-    let z_start = start_point / slice_area;
-    let z_end = z_start + block.depth as usize;
+        let z_start = start_point / slice_area;
+        let z_end = z_start + block.depth as usize;
 
-    if x_end <= cuboid_height && y_end <= cuboid_width && z_end <= cuboid_depth {
+        if x_end > self.puzzle_height || y_end > self.puzzle_width || z_end > self.puzzle_depth {
+            trace!("block sticks out");
+            return None;
+        }
+        if let Some(target_sum) = self.target {
+            // if a puzzle face is completed, its value must add up to target_sum
+            if x_start == 0 {
+                let idx = Dir::Bottom as usize;
+                let current_sum = self.face_sums[idx];
+                let new_sum = current_sum + block.faces[idx].value;
+                if new_sum > target_sum {
+                    trace!("bottom sum too big");
+                    return None;
+                }
+                if new_sum == target_sum {
+                    for k in 0..self.puzzle_depth {
+                        for j in 0..self.puzzle_width {
+                            let idx = k * slice_area + j * self.puzzle_height;
+                            // where the block would fit on the face
+                            if k >= z_start && k < z_end && j >= y_start && j < y_end {
+                                if self.state[idx].is_some() {
+                                    // if there's another block -> bail
+                                    trace!("bottom there's a block here");
+                                    return None;
+                                } else {
+                                    // if it's empty -> ok
+                                    continue;
+                                }
+                            }
+                            // this is spot is not filled nor would be filled by the block -> bail
+                            if self.state[idx].is_none() {
+                                trace!("bottom sum==target_sum but face not full");
+                                return None;
+                            }
+                        }
+                    }
+                }
+                if new_sum < target_sum
+                    && self.face_free_areas[idx] as i16 - block.faces[idx].area() as i16 == 0
+                {
+                    return None;
+                }
+            }
+            if x_end == self.puzzle_height {
+                let idx = Dir::Top as usize;
+                let current_sum = self.face_sums[idx];
+                let new_sum = current_sum + block.faces[idx].value;
+                if new_sum > target_sum {
+                    trace!("top sum too big");
+                    return None;
+                }
+                if new_sum == target_sum {
+                    for k in 0..self.puzzle_depth {
+                        for j in 0..self.puzzle_width {
+                            let idx =
+                                k * slice_area + j * self.puzzle_height + self.puzzle_height - 1;
+                            // where the block would fit on the face
+                            if k >= z_start && k < z_end && j >= y_start && j < y_end {
+                                if self.state[idx].is_some() {
+                                    // if there's another block -> bail
+                                    trace!("top there's a block here");
+                                    return None;
+                                } else {
+                                    // if it's empty -> ok
+                                    continue;
+                                }
+                            }
+                            // this is spot is not filled nor would be filled by the block -> bail
+                            if self.state[idx].is_none() {
+                                trace!("front sum==target_sum but face not full");
+                                return None;
+                            }
+                        }
+                    }
+                }
+                if new_sum < target_sum
+                    && self.face_free_areas[idx] as i16 - block.faces[idx].area() as i16 == 0
+                {
+                    return None;
+                }
+            }
+
+            if y_start == 0 {
+                let idx = Dir::Left as usize;
+                let current_sum = self.face_sums[idx];
+                let new_sum = current_sum + block.faces[idx].value;
+                if new_sum > target_sum {
+                    trace!("left sum too big");
+                    return None;
+                }
+                if new_sum == target_sum {
+                    for k in 0..self.puzzle_depth {
+                        for i in 0..self.puzzle_height {
+                            let idx = k * slice_area + i;
+                            // where the block would fit on the face
+                            if k >= z_start && k < z_end && i >= x_start && i < x_end {
+                                if self.state[idx].is_some() {
+                                    // if there's another block -> bail
+                                    trace!("left there's a block here");
+                                    return None;
+                                } else {
+                                    // if it's empty -> ok
+                                    continue;
+                                }
+                            }
+                            // this is spot is not filled nor would be filled by the block -> bail
+                            if self.state[idx].is_none() {
+                                trace!("left sum==target_sum but face not full");
+                                return None;
+                            }
+                        }
+                    }
+                }
+                if new_sum < target_sum
+                    && self.face_free_areas[idx] as i16 - block.faces[idx].area() as i16 == 0
+                {
+                    return None;
+                }
+            }
+            if y_end == self.puzzle_width {
+                let idx = Dir::Right as usize;
+                let current_sum = self.face_sums[idx];
+                let new_sum = current_sum + block.faces[idx].value;
+                if new_sum > target_sum {
+                    trace!("right sum too big");
+                    return None;
+                }
+                if new_sum == target_sum {
+                    for k in 0..self.puzzle_depth {
+                        for i in 0..self.puzzle_height {
+                            let idx =
+                                k * slice_area + (self.puzzle_width - 1) * self.puzzle_height + i;
+                            // where the block would fit on the face
+                            if k >= z_start && k < z_end && i >= x_start && i < x_end {
+                                if self.state[idx].is_some() {
+                                    // if there's another block -> bail
+                                    trace!("right there's a block here");
+                                    return None;
+                                } else {
+                                    // if it's empty -> ok
+                                    continue;
+                                }
+                            }
+                            // this is spot is not filled nor would be filled by the block -> bail
+                            if self.state[idx].is_none() {
+                                trace!("right sum==target_sum but face not full");
+                                return None;
+                            }
+                        }
+                    }
+                }
+                if new_sum < target_sum
+                    && self.face_free_areas[idx] as i16 - block.faces[idx].area() as i16 == 0
+                {
+                    return None;
+                }
+            }
+
+            if z_start == 0 {
+                let idx = Dir::Front as usize;
+                let current_sum = self.face_sums[idx];
+                let new_sum = current_sum + block.faces[idx].value;
+                if new_sum > target_sum {
+                    trace!("front sum too big");
+                    return None;
+                }
+                if new_sum == target_sum {
+                    for j in 0..self.puzzle_width {
+                        for i in 0..self.puzzle_height {
+                            let idx = j * self.puzzle_height + i;
+                            // where the block would fit on the face
+                            if j >= y_start && j < y_end && i >= x_start && i < x_end {
+                                if self.state[idx].is_some() {
+                                    // if there's another block -> bail
+                                    trace!("front there's a block here");
+                                    return None;
+                                } else {
+                                    // if it's empty -> ok
+                                    continue;
+                                }
+                            }
+                            // this is spot is not filled nor would be filled by the block -> bail
+                            if self.state[idx].is_none() {
+                                trace!("front sum==target_sum but face not full");
+                                return None;
+                            }
+                        }
+                    }
+                }
+                if new_sum < target_sum
+                    && self.face_free_areas[idx] as i16 - block.faces[idx].area() as i16 == 0
+                {
+                    return None;
+                }
+            }
+            if z_end == self.puzzle_depth {
+                let idx = Dir::Back as usize;
+                let current_sum = self.face_sums[idx];
+                let new_sum = current_sum + block.faces[idx].value;
+                if new_sum > target_sum {
+                    trace!("back sum too big");
+                    return None;
+                }
+                if new_sum == target_sum {
+                    for j in 0..self.puzzle_width {
+                        for i in 0..self.puzzle_height {
+                            let idx =
+                                (self.puzzle_depth - 1) * slice_area + j * self.puzzle_height + i;
+                            // where the block would fit on the face
+                            if j >= y_start && j < y_end && i >= x_start && i < x_end {
+                                if self.state[idx].is_some() {
+                                    // if there's another block -> bail
+                                    trace!("back there's a block here");
+                                    return None;
+                                } else {
+                                    // if it's empty -> ok
+                                    continue;
+                                }
+                            }
+                            // this is spot is not filled nor would be filled by the block -> bail
+                            if self.state[idx].is_none() {
+                                trace!("back sum==target_sum but face not full");
+                                return None;
+                            }
+                        }
+                    }
+                }
+                if new_sum < target_sum
+                    && self.face_free_areas[idx] as i16 - block.faces[idx].area() as i16 == 0
+                {
+                    return None;
+                }
+            }
+        }
+
         // only if the block fits...
         for k in z_start..z_end {
             for j in y_start..y_end {
                 for i in x_start..x_end {
-                    let idx = k * slice_area + j * cuboid_height + i;
-                    if state[idx].is_some() {
+                    let idx = k * slice_area + j * self.puzzle_height + i;
+                    if self.state[idx].is_some() {
+                        trace!("there's a block here");
                         return None;
                     }
                 }
@@ -556,21 +891,53 @@ fn place_3d(
         for k in z_start..z_end {
             for j in y_start..y_end {
                 for i in x_start..x_end {
-                    let idx = k * slice_area + j * cuboid_height + i;
-                    state[idx] = Some(block_id);
+                    let idx = k * slice_area + j * self.puzzle_height + i;
+                    self.state[idx] = Some(bip);
                 }
             }
         }
-        let volume = slice_area * cuboid_depth;
-        let new_start_point = state
+        if self.target.is_some() {
+            if x_start == 0 {
+                let idx = Dir::Bottom as usize;
+                self.face_sums[idx] += block.faces[idx].value;
+                self.face_free_areas[idx] -= block.faces[idx].area();
+            }
+            if x_end == self.puzzle_height {
+                let idx = Dir::Top as usize;
+                self.face_sums[idx] += block.faces[idx].value;
+                self.face_free_areas[idx] -= block.faces[idx].area();
+            }
+            if y_start == 0 {
+                let idx = Dir::Left as usize;
+                self.face_sums[idx] += block.faces[idx].value;
+                self.face_free_areas[idx] -= block.faces[idx].area();
+            }
+            if y_end == self.puzzle_width {
+                let idx = Dir::Right as usize;
+                self.face_sums[idx] += block.faces[idx].value;
+                self.face_free_areas[idx] -= block.faces[idx].area();
+            }
+            if z_start == 0 {
+                let idx = Dir::Front as usize;
+                self.face_sums[idx] += block.faces[idx].value;
+                self.face_free_areas[idx] -= block.faces[idx].area();
+            }
+            if z_end == self.puzzle_depth {
+                let idx = Dir::Back as usize;
+                self.face_sums[idx] += block.faces[idx].value;
+                self.face_free_areas[idx] -= block.faces[idx].area();
+            }
+        }
+
+        let volume = slice_area * self.puzzle_depth;
+        let new_start_point = self
+            .state
             .iter()
             .skip(start_point)
             .position(|&e| e.is_none())
             .map(|r| r + start_point)
             .unwrap_or(volume);
         Some(new_start_point)
-    } else {
-        None
     }
 }
 
@@ -630,16 +997,17 @@ mod test {
         .to_vec();
 
         let mut solver = Solver {
-            block_count: 2,
-            rot_count: 3,
             puzzle_height: 2,
             puzzle_width: 2,
             puzzle_depth: 1,
+            target: None,
             rot_blocks,
             stack: vec![],
             rem: HashSet::from_iter(0..2),
             position: 0,
             state: vec![None; 4],
+            face_sums: [0; 6],
+            face_free_areas: [4, 4, 2, 2, 2, 2],
             done: false,
             count: 0,
         };
@@ -681,16 +1049,17 @@ mod test {
         .to_vec();
 
         let mut solver = Solver {
-            block_count: 4,
-            rot_count: 3,
             puzzle_height: 2,
             puzzle_width: 2,
             puzzle_depth: 2,
+            target: None,
             rot_blocks,
             stack: vec![],
             rem: HashSet::from_iter(0..4),
             position: 0,
             state: vec![None; 8],
+            face_sums: [0; 6],
+            face_free_areas: [4, 4, 4, 4, 4, 4],
             done: false,
             count: 0,
         };
