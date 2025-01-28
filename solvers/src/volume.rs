@@ -332,7 +332,7 @@ pub struct Solver {
 }
 
 impl Solver {
-    fn block_count(&self) -> usize {
+    pub fn block_count(&self) -> usize {
         self.rot_blocks.len()
     }
 

@@ -60,6 +60,13 @@ pub fn demo_3d() {
     let mut step_once = false;
     let mut step_to_sol = false;
 
+    let mut meshes = vec![];
+    for i in 0..solver.block_count() {
+        let color = colors[&i];
+        let mesh = block(&context, color.0, color.1, color.2);
+        meshes.push(mesh);
+    }
+
     let mut gui = three_d::GUI::new(&context);
     window.render_loop(move |mut frame_input| {
         let mut panel_width = 0.0;
@@ -101,22 +108,22 @@ pub fn demo_3d() {
 
         control.handle_events(&mut camera, &mut frame_input.events);
 
-        let mut meshes = vec![];
+        for mesh in &mut meshes {
+            mesh.set_transformation(Mat4::from_translation(vec3(1., 1., -1000.)));
+        }
         for b in &solver.stack() {
-            let color = colors[&b.1];
-            let mesh = block(
-                &context,
-                b.0.height as f32,
-                b.0.width as f32,
-                b.0.depth as f32,
-                b.2 as f32,
-                b.3 as f32,
-                b.4 as f32,
-                color.0,
-                color.1,
-                color.2,
+            let h = b.0.height as f32;
+            let w = b.0.width as f32;
+            let d = b.0.depth as f32;
+            let x = b.2 as f32;
+            let y = b.3 as f32;
+            let z = b.4 as f32;
+            meshes[b.1].set_transformation(
+                Mat4::from_translation(vec3(x - 6.0, y - 5.5, z - 4.5)) // puzzle is 12x11x9 -> center
+            * Mat4::from_nonuniform_scale(h - 0.6, w - 0.6, d - 0.6)
+            * Mat4::from_scale(0.5)
+            * Mat4::from_translation(vec3(1., 1., 1.)),
             );
-            meshes.push(mesh);
         }
 
         frame_input
@@ -146,19 +153,8 @@ pub fn demo_3d() {
     });
 }
 
-fn block(
-    context: &Context,
-    h: f32,
-    w: f32,
-    d: f32,
-    x: f32,
-    y: f32,
-    z: f32,
-    r: u8,
-    g: u8,
-    b: u8,
-) -> Gm<Mesh, PhysicalMaterial> {
-    let mut block = Gm::new(
+fn block(context: &Context, r: u8, g: u8, b: u8) -> Gm<Mesh, PhysicalMaterial> {
+    Gm::new(
         Mesh::new(context, &CpuMesh::cube()),
         PhysicalMaterial::new_transparent(
             context,
@@ -168,12 +164,5 @@ fn block(
                 ..Default::default()
             },
         ),
-    );
-    block.set_transformation(
-        Mat4::from_translation(vec3(x - 6.0, y - 5.5, z - 4.5)) // puzzle is 12x11x9 -> center
-            * Mat4::from_nonuniform_scale(h - 0.4, w - 0.4, d - 0.4)
-            * Mat4::from_scale(0.5)
-            * Mat4::from_translation(vec3(1., 1., 1.)),
-    );
-    block
+    )
 }
