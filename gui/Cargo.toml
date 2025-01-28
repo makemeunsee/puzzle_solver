@@ -5,5 +5,5 @@ edition = "2021"
 
 [dependencies]
 log = "0.4.25"
-three-d = { version ="*", features= ["egui-gui"] }
+three-d = { version ="*", features= ["egui-gui", "text"] }
 solvers = { path = "../solvers" }

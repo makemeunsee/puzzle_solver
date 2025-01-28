@@ -6,7 +6,7 @@ use three_d::*;
 pub fn demo_3d() {
     let window = Window::new(WindowSettings {
         title: "Shapes!".to_string(),
-        max_size: Some((2550, 1440)), // TODO make it smaller for web?
+        max_size: Some((2550, 1440)),
         ..Default::default()
     })
     .unwrap();
@@ -22,6 +22,17 @@ pub fn demo_3d() {
         1000.0,
     );
     let mut control = OrbitControl::new(camera.target(), 1.0, 100.0);
+
+    let text_generator = TextGenerator::new(include_bytes!("OldEnglishFive.ttf"), 0, 1.8).unwrap();
+    let text_mesh = text_generator.generate("52", TextLayoutOptions::default());
+    let mut text = Gm::new(
+        Mesh::new(&context, &text_mesh),
+        ColorMaterial {
+            color: Srgba::BLACK,
+            ..Default::default()
+        },
+    );
+    text.material.render_states.cull = Cull::Front;
 
     let mut pbox = Gm::new(
         Mesh::new(&context, &CpuMesh::cube()),
@@ -61,10 +72,9 @@ pub fn demo_3d() {
     let mut step_to_sol = false;
 
     let mut meshes = vec![];
-    for i in 0..solver.block_count() {
-        let color = colors[&i];
-        let mesh = block(&context, color.0, color.1, color.2);
-        meshes.push(mesh);
+    for idx in 0..solver.block_count() {
+        let color = colors[&idx];
+        meshes.push(block(&context, color.0, color.1, color.2));
     }
 
     let mut gui = three_d::GUI::new(&context);
@@ -118,19 +128,20 @@ pub fn demo_3d() {
             let x = b.2 as f32;
             let y = b.3 as f32;
             let z = b.4 as f32;
-            meshes[b.1].set_transformation(
-                Mat4::from_translation(vec3(x - 6.0, y - 5.5, z - 4.5)) // puzzle is 12x11x9 -> center
-            * Mat4::from_nonuniform_scale(h - 0.6, w - 0.6, d - 0.6)
-            * Mat4::from_scale(0.5)
-            * Mat4::from_translation(vec3(1., 1., 1.)),
-            );
+            let position = Mat4::from_translation(vec3(x - 6.0, y - 5.5, z - 4.5)); // puzzle is 12x11x9 -> center
+            let shape = Mat4::from_nonuniform_scale(h - 0.6, w - 0.6, d - 0.6);
+            let cube_too_big = Mat4::from_scale(0.5);
+            let cube_offset = Mat4::from_translation(vec3(1., 1., 1.));
+            meshes[b.1].set_transformation(position * shape * cube_too_big * cube_offset);
         }
 
         frame_input
             .screen()
             .clear(ClearState::color_and_depth(0.8, 0.8, 0.8, 1.0, 1.0))
             .render(&camera, &meshes, &[]);
-        frame_input.screen().render(&camera, &bounding_box, &[]);
+        frame_input
+            .screen()
+            .render(&camera, bounding_box.into_iter().chain(&text), &[]);
         frame_input.screen().write(|| gui.render()).unwrap();
 
         if solving || step_once {

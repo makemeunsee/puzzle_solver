@@ -1,8 +1,8 @@
-use std::collections::HashSet;
-
 use crate::common::{Block, Dir, Face, BLOCK_COUNT, DEPTH, HEIGHT, WIDTH};
 use itertools::Itertools;
+use lazy_static::lazy_static;
 use log::{debug, trace};
+use std::collections::HashSet;
 
 pub fn solver(shape_only: bool) -> Solver {
     let height = HEIGHT as usize;
@@ -11,12 +11,18 @@ pub fn solver(shape_only: bool) -> Solver {
     let volume = height * width * depth;
     let (rot_blocks, target) = if shape_only {
         (
-            crate::common::BLOCKS.iter().map(shape_rots).collect_vec(),
+            crate::common::BLOCKS
+                .iter()
+                .map(all_shape_rots)
+                .collect_vec(),
             None,
         )
     } else {
         (
-            crate::common::BLOCKS.iter().map(all_rots).collect_vec(),
+            crate::common::BLOCKS
+                .iter()
+                .map(all_block_rots)
+                .collect_vec(),
             Some(100),
         )
     };
@@ -241,12 +247,9 @@ fn rot_block(axis: &Dir, block: &Block) -> Block {
     }
 }
 
-// create the rotational variants of a block, treating it as a faceless shape
-// usually 6 variants, possibly fewer:
-// 3 (square base case)
-// 1 (cube case)
-fn shape_rots(block: &Block) -> Vec<Block> {
-    let rotss = [
+// order matters! some optimisation relies on it, see `move_sideway_or_backtrack`
+lazy_static! {
+    static ref BASE_ROTS: Vec<Vec<Dir>> = vec![
         vec![],
         vec![Dir::Top],
         vec![Dir::Back],
@@ -254,8 +257,15 @@ fn shape_rots(block: &Block) -> Vec<Block> {
         vec![Dir::Right],
         vec![Dir::Right, Dir::Top],
     ];
+}
+
+// create the rotational variants of a block, treating it as a faceless shape
+// usually 6 variants, possibly fewer:
+// 3 (square base case)
+// 1 (cube case)
+fn all_shape_rots(block: &Block) -> Vec<Block> {
     let mut result = vec![];
-    for rots in &rotss {
+    for rots in &*BASE_ROTS {
         let mut res = block.clone();
         for rot in rots {
             res = rot_block(rot, &res);
@@ -269,26 +279,20 @@ fn shape_rots(block: &Block) -> Vec<Block> {
         .collect_vec()
 }
 
-// create the 24 rotational variants of a block
-fn all_rots(block: &Block) -> Vec<Block> {
-    // order matters! some optimisation relies on it, see `move_sideway_or_backtrack`
-    let rotss_1 = [
-        vec![],
-        vec![Dir::Top],
-        vec![Dir::Back],
-        vec![Dir::Back, Dir::Top],
-        vec![Dir::Right],
-        vec![Dir::Right, Dir::Top],
-    ];
-    let rotss_2 = [
+lazy_static! {
+    static ref FLIP_ROTS: Vec<Vec<Dir>> = vec![
         vec![],
         vec![Dir::Top, Dir::Top],
         vec![Dir::Right, Dir::Right],
         vec![Dir::Back, Dir::Back],
     ];
+}
+
+// create the 24 rotational variants of a block
+fn all_block_rots(block: &Block) -> Vec<Block> {
     let mut result = vec![];
-    for rots_1 in &rotss_1 {
-        for rots_2 in &rotss_2 {
+    for rots_1 in &*BASE_ROTS {
+        for rots_2 in &*FLIP_ROTS {
             let mut res = block.clone();
             for r in rots_1 {
                 res = rot_block(r, &res);
@@ -317,6 +321,7 @@ pub struct Solver {
     puzzle_width: usize,
     puzzle_depth: usize,
     target: Option<u8>,
+    // for each base block, all its relevant rotations
     rot_blocks: Vec<Vec<Block>>,
     stack: Vec<BlockInPuzzle>,
     // ids of blocks still to be stacked
@@ -1237,7 +1242,7 @@ mod test {
             label: "U",
         };
 
-        let rots = all_rots(&block);
+        let rots = all_block_rots(&block);
         let set: HashSet<Block> = HashSet::from_iter(rots);
         assert_eq!(set.len(), 24);
     }
@@ -1348,10 +1353,7 @@ mod test {
             label: "B",
         };
 
-        let rot_blocks = [block_a, block_b]
-            .into_iter()
-            .map(|block| all_rots(&block).to_vec())
-            .collect_vec();
+        let rot_blocks = [block_a, block_b].iter().map(all_block_rots).collect_vec();
 
         let mut solver = Solver {
             puzzle_height: 2,

@@ -1,6 +1,4 @@
-use itertools::Itertools;
-use lazy_static::lazy_static;
-use std::{collections::HashSet, hash::Hash};
+use std::hash::Hash;
 
 // The puzzle is a paralleliped of dimensions 12x11x9.
 // It is composed of smaller parallelepipeds (blocks).
@@ -18,10 +16,6 @@ pub const DEPTH: u8 = 9;
 pub const AREA_L: u8 = 132;
 pub const AREA_M: u8 = 108;
 pub const AREA_S: u8 = 99;
-
-lazy_static! {
-    static ref AREAS: HashSet<u8> = HashSet::from([AREA_L, AREA_M, AREA_S]);
-}
 
 #[derive(Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Hash)]
 pub enum Dir {
@@ -579,11 +573,3 @@ pub const BLOCKS: [Block; BLOCK_COUNT] = [
         label: "small_brick",
     },
 ];
-
-lazy_static! {
-    pub static ref FACES: Vec<&'static Face> = BLOCKS
-        .iter()
-        .map(|b| b.faces.each_ref())
-        .collect_vec()
-        .concat();
-}
