@@ -6,7 +6,6 @@ use three_d::*;
 pub fn demo_3d() {
     let window = Window::new(WindowSettings {
         title: "Shapes!".to_string(),
-        max_size: Some((2550, 1440)),
         ..Default::default()
     })
     .unwrap();
