@@ -51,7 +51,7 @@ pub fn demo_3d() {
             * Mat4::from_translation(vec3(1., 1., 1.)),
     );
     let bounding_box = Gm::new(
-        BoundingBox::new(&context, pbox.aabb()),
+        BoundingBox::new_with_thickness(&context, pbox.aabb(), 0.1),
         ColorMaterial {
             color: Srgba::BLACK,
             ..Default::default()
@@ -78,8 +78,9 @@ pub fn demo_3d() {
     let mut step_to_sol = false;
     let mut transparency = true;
     let mut monochrome = false;
-    let mut show_numbers = false;
-    let mut shape_only = true;
+    let mut show_numbers = true;
+    let mut solve_sums = false;
+    let mut solver_mode_toggle = false;
 
     let mut gui = three_d::GUI::new(&context);
 
@@ -98,10 +99,16 @@ pub fn demo_3d() {
                     ui.heading("Control Panel");
                     ui.add(three_d::egui::Separator::default());
                     ui.add(Slider::new(&mut step_freq, 1..=120).text("Speed"));
-                    if ui.add(Button::new("Play")).clicked() {
+                    if ui
+                        .add_enabled(!solve_sums || !step_to_sol, Button::new("Play"))
+                        .clicked()
+                    {
                         solving = true;
                     };
-                    if ui.add(Button::new("Pause")).clicked() {
+                    if ui
+                        .add_enabled(!solve_sums || !step_to_sol, Button::new("Pause"))
+                        .clicked()
+                    {
                         solving = false;
                     };
                     if ui.add(Button::new("Step once")).clicked() {
@@ -111,12 +118,12 @@ pub fn demo_3d() {
                     ui.add(Checkbox::new(&mut step_to_sol, "Step to solutions only"));
                     if ui
                         .add(Checkbox::new(
-                            &mut shape_only,
-                            "Toggle solving side values sum to 100 (restart)",
+                            &mut solve_sums,
+                            "Toggle solving with side sums (restarts the solver; stepping past the last solution will freeze the app until the solver has explored all configurations)",
                         ))
                         .clicked()
                     {
-                        // TODO
+                        solver_mode_toggle = true;
                     }
                     ui.add(three_d::egui::Separator::default());
                     ui.add(Checkbox::new(&mut show_numbers, "Show numbers"));
@@ -140,6 +147,16 @@ pub fn demo_3d() {
         // hide the numbers away, relevant ones are placed where needed later on
         for mesh in &mut numbers {
             mesh.set_transformation(Mat4::from_translation(vec3(0., -1000., -1000.)));
+        }
+
+        if solver_mode_toggle {
+            solving = false;
+            solver_mode_toggle = false;
+            solver = volume::solver(!solve_sums);
+        }
+        // would freeze the UI, also there are too few solutions for animation to make sense
+        if solve_sums && step_to_sol {
+            solving = false;
         }
 
         let mut blocks = vec![];
@@ -179,26 +196,26 @@ pub fn demo_3d() {
                 for face in &b.0.faces {
                     let mesh = &mut numbers[face.value as usize - 1];
                     let trans = match face.dir {
-                        Dir::Front => Mat4::from_translation(vec3(
+                        Dir::Back => Mat4::from_translation(vec3(
                             x + h - TEXT_HALF_WIDTH,
                             y + w - TEXT_HALF_HEIGHT,
                             z + 2. * d + EPS,
                         )),
-                        Dir::Back => {
+                        Dir::Front => {
                             Mat4::from_translation(vec3(
                                 x + h + TEXT_HALF_WIDTH,
                                 y + w - TEXT_HALF_HEIGHT,
                                 z - EPS,
                             )) * Mat4::from_angle_y(Deg(180.))
                         }
-                        Dir::Left => {
+                        Dir::Right => {
                             Mat4::from_translation(vec3(
                                 x + h - TEXT_HALF_WIDTH,
                                 y + 2. * w + EPS,
                                 z + d + TEXT_HALF_HEIGHT,
                             )) * Mat4::from_angle_x(Deg(-90.))
                         }
-                        Dir::Right => {
+                        Dir::Left => {
                             Mat4::from_translation(vec3(
                                 x + h - TEXT_HALF_WIDTH,
                                 y - EPS,

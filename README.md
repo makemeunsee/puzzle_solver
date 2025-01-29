@@ -4,6 +4,9 @@
 
 The puzzle is made of 9 blocks and an empty transparent box.
 On each face of each block shows a unique number, from `1` to `54`.
+
+![picture of the real puzzle, solved](https://makemeunsee.github.io/puzzle_solver/the_puzzle.jpg)
+
 The puzzle is complete when:
 
 * the box is packed with all blocks
@@ -14,7 +17,6 @@ See [the code](solvers/src/common.rs) for the full specs of the puzzle.
 ## Demo
 
 https://makemeunsee.github.io/puzzle_solver/  
-(shape solving only)
 
 ## How to run
 
