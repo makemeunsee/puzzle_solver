@@ -258,9 +258,9 @@ fn find_corner<'a>(
     for fs in faces_s {
         let block = fs.block;
         for fm in faces_m {
-            if block == fm.block {
+            if block == fm.block && fs.opposite() != fm {
                 for fl in faces_l {
-                    if block == fl.block {
+                    if block == fl.block && fs.opposite() != fl && fm.opposite() != fl {
                         corners.push((fs, fm, fl));
                     }
                 }
