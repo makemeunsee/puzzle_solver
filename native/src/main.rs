@@ -4,7 +4,7 @@ use solvers::{constraints, volume};
 pub fn main() {
     env_logger::init();
 
-    constraints::solve();
+    constraints::solve(100);
 
     let mut solver = volume::solver(false);
     while solver.step() {}

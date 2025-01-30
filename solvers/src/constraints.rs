@@ -3,7 +3,7 @@ use itertools::Itertools;
 use log::{debug, info, trace};
 use std::collections::{HashMap, HashSet};
 
-pub fn solve() {
+pub fn solve(target: u8) {
     let all_faces = [
         BLOCKS[0].faces.clone(),
         BLOCKS[1].faces.clone(),
@@ -16,9 +16,9 @@ pub fn solve() {
         BLOCKS[8].faces.clone(),
     ]
     .concat();
-    let sols_small = combinations_to_n(&all_faces, WIDTH, DEPTH, 100);
-    let sols_medium = combinations_to_n(&all_faces, HEIGHT, DEPTH, 100);
-    let sols_large = combinations_to_n(&all_faces, HEIGHT, WIDTH, 100);
+    let sols_small = combinations_to_n(&all_faces, WIDTH, DEPTH, target);
+    let sols_medium = combinations_to_n(&all_faces, HEIGHT, DEPTH, target);
+    let sols_large = combinations_to_n(&all_faces, HEIGHT, WIDTH, target);
 
     let pairs_small: Vec<(Vec<Face>, Vec<Face>)> = match_combos_in_pairs(sols_small, WIDTH, DEPTH);
     let pairs_medium: Vec<(Vec<Face>, Vec<Face>)> =
@@ -76,11 +76,8 @@ fn combinations_to_n(faces: &[Face], long: u8, short: u8, n: u8) -> Vec<Vec<Face
     let mut solutions: Vec<Vec<Face>> = vec![];
     // first candidate = no face selected, all faces selectable
     let mut candidates: Vec<(Vec<Face>, Vec<Face>)> = vec![(vec![], faces.to_vec())];
-    // process candidates until all have their faces adding up to 100
-    while candidates
-        .iter()
-        .any(|(fs, _)| fs.iter().map(|f| f.value).sum::<u8>() != n)
-    {
+    // process until all candidates are exhausted
+    while !candidates.is_empty() {
         let mut new_candidates: Vec<(Vec<Face>, Vec<Face>)> = vec![];
         for (candidate, rem) in &candidates {
             // for each candidate, build further candidates by selecting 1 more face from the remaining selectable faces
