@@ -1,5 +1,8 @@
 use log::info;
-use solvers::{common::Dir, volume};
+use solvers::{
+    common::{Dir, DEPTH, HEIGHT, WIDTH},
+    volume,
+};
 use std::collections::HashMap;
 use three_d::*;
 
@@ -14,9 +17,9 @@ pub fn demo_3d() {
     let mut camera = Camera::new_perspective(
         window.viewport(),
         vec3(20.0, 30.0, 45.0),
-        // look at the center of the puzzle
-        vec3(12.0, 11., 9.),
-        vec3(0.0, 1.0, 0.0),
+        // look at the center of the puzzle (we draw with a 2x scale)
+        vec3(HEIGHT as f32, WIDTH as f32, DEPTH as f32),
+        vec3(0.0, 0.0, 1.0),
         degrees(90.0),
         0.1,
         1000.0,
@@ -45,7 +48,7 @@ pub fn demo_3d() {
     );
     pbox.set_transformation(
         // scale by the puzzle size
-        Mat4::from_nonuniform_scale(12., 11., 9.)
+        Mat4::from_nonuniform_scale(HEIGHT as f32, WIDTH as f32, DEPTH as f32)
             // the base cube is centered on origin, and we want the origin to be a corner of the puzzle
             * Mat4::from_translation(vec3(1., 1., 1.)),
     );
@@ -195,45 +198,56 @@ pub fn demo_3d() {
                 for face in &b.0.faces {
                     let mesh = &mut numbers[face.value as usize - 1];
                     let trans = match face.dir {
-                        Dir::Back => Mat4::from_translation(vec3(
-                            x + h - TEXT_HALF_WIDTH,
-                            y + w - TEXT_HALF_HEIGHT,
-                            z + 2. * d + EPS,
-                        )),
+                        Dir::Back => {
+                            Mat4::from_translation(vec3(
+                                x + h + TEXT_HALF_WIDTH,
+                                y + w + TEXT_HALF_HEIGHT,
+                                z + 2. * d + EPS,
+                            ))
+                            * Mat4::from_angle_z(Deg(180.))
+                        }
                         Dir::Front => {
                             Mat4::from_translation(vec3(
                                 x + h + TEXT_HALF_WIDTH,
                                 y + w - TEXT_HALF_HEIGHT,
                                 z - EPS,
-                            )) * Mat4::from_angle_y(Deg(180.))
+                            ))
+                            * Mat4::from_angle_y(Deg(180.))
                         }
                         Dir::Right => {
                             Mat4::from_translation(vec3(
-                                x + h - TEXT_HALF_WIDTH,
+                                x + h + TEXT_HALF_WIDTH,
                                 y + 2. * w + EPS,
-                                z + d + TEXT_HALF_HEIGHT,
-                            )) * Mat4::from_angle_x(Deg(-90.))
+                                z + d - TEXT_HALF_HEIGHT,
+                            ))
+                            * Mat4::from_angle_x(Deg(-90.))
+                            * Mat4::from_angle_z(Deg(180.))
                         }
                         Dir::Left => {
                             Mat4::from_translation(vec3(
                                 x + h - TEXT_HALF_WIDTH,
                                 y - EPS,
                                 z + d - TEXT_HALF_HEIGHT,
-                            )) * Mat4::from_angle_x(Deg(90.))
+                            ))
+                            * Mat4::from_angle_x(Deg(90.))
                         }
                         Dir::Top => {
                             Mat4::from_translation(vec3(
                                 x + 2. * h + EPS,
-                                y + w - TEXT_HALF_HEIGHT,
-                                z + d + TEXT_HALF_WIDTH,
-                            )) * Mat4::from_angle_y(Deg(90.))
+                                y + w - TEXT_HALF_WIDTH,
+                                z + d - TEXT_HALF_HEIGHT,
+                            ))
+                            * Mat4::from_angle_y(Deg(90.))
+                            * Mat4::from_angle_z(Deg(90.))
                         }
                         Dir::Bottom => {
                             Mat4::from_translation(vec3(
                                 x - EPS,
-                                y + w - TEXT_HALF_HEIGHT,
-                                z + d - TEXT_HALF_WIDTH,
-                            )) * Mat4::from_angle_y(Deg(-90.))
+                                y + w + TEXT_HALF_WIDTH,
+                                z + d - TEXT_HALF_HEIGHT,
+                            ))
+                            * Mat4::from_angle_y(Deg(-90.))
+                            * Mat4::from_angle_z(Deg(-90.))
                         }
                     };
                     mesh.set_transformation(trans);
