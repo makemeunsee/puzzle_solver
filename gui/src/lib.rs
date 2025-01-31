@@ -16,7 +16,7 @@ pub fn demo_3d() {
 
     let mut camera = Camera::new_perspective(
         window.viewport(),
-        vec3(20.0, 30.0, 45.0),
+        vec3(20.0, 45.0, 30.0),
         // look at the center of the puzzle (we draw with a 2x scale)
         vec3(HEIGHT as f32, WIDTH as f32, DEPTH as f32),
         vec3(0.0, 0.0, 1.0),
