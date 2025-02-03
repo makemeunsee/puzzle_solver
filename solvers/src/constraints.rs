@@ -1,4 +1,5 @@
 use crate::common::{Dir, Face, AREA_L, AREA_M, AREA_S, BLOCKS, DEPTH, HEIGHT, WIDTH};
+use core::panic;
 use itertools::Itertools;
 use log::{debug, info, trace};
 use std::collections::{HashMap, HashSet};
@@ -31,6 +32,7 @@ pub fn solve(target: u8) {
     let total = pairs_l_count * pairs_m_count * pairs_s_count;
     debug!("6-combos to check: {}", total);
 
+    let mut count = 0;
     for pair_s in &pairs_small {
         let set_s_0: HashSet<Face> = pair_s.0.clone().into_iter().collect();
         let set_s_1: HashSet<Face> = pair_s.1.clone().into_iter().collect();
@@ -68,6 +70,8 @@ pub fn solve(target: u8) {
                 }
             }
         }
+        count += pairs_m_count as u64 * pairs_l_count as u64;
+        trace!("{}/{}", count, total);
     }
 }
 
@@ -99,13 +103,35 @@ fn combinations_to_n(faces: &[Face], long: u8, short: u8, n: u8) -> Vec<Vec<Face
                     continue;
                 }
 
+                // let sum = new_candidate
+                //     .iter()
+                //     .map(|face| face.value as u16)
+                //     .sum::<u16>();
+                // let ok = sum == 4
+                //     || sum == 9
+                //     || sum == 16
+                //     || sum == 25
+                //     || sum == 36
+                //     || sum == 49
+                //     || sum == 64
+                //     || sum == 81
+                //     || sum == 100
+                //     || sum == 121
+                //     || sum == 144
+                //     || sum == 169
+                //     || sum == 196
+                //     || sum == 225
+                //     || sum == 256;
+
                 let sum = new_candidate.iter().map(|face| face.value).sum::<u8>();
 
                 // store found solutions away;
                 // keep the remaining candidates for another iteration
                 if sum == n && area == current_area && form_a_rectangle(long, short, &new_candidate)
                 {
+                    // if ok && area == current_area && form_a_rectangle(long, short, &new_candidate) {
                     solutions.push(new_candidate);
+                // } else {
                 } else if sum < n {
                     new_candidates.push((new_candidate, new_rem))
                 }
@@ -230,7 +256,7 @@ fn place(
         for j in y_start..y_end {
             for i in x_start..x_end {
                 let idx = (j * rect_long + i) as usize;
-                if state[idx] != 0 {
+                if state[idx] != 0 && state[idx] != piece_val {
                     return None;
                 }
                 new_state[idx] = piece_val;
@@ -308,17 +334,434 @@ fn compatible_six_combo(
     } else {
         panic!("nope: {:?}", corner0) // shouldnt happen here
     };
+    constraints.insert(corner0.2, last_constraint);
 
     // Propagate to all faces, check consistency
     if let Some(constraints) =
         can_propagate(pairs_s, pairs_m, pairs_l, constraints, last_constraint)
     {
         corners
-            .into_iter()
-            .all(|corner| is_corner_possible(&corner, &constraints))
+            .iter()
+            .all(|corner| is_corner_possible(corner, &constraints))
+            && pairs_s
+                .0
+                .iter()
+                .all(|f| constraints[f] == constraints[&pairs_s.0[0]])
+            && pairs_s
+                .1
+                .iter()
+                .all(|f| constraints[f] == constraints[&pairs_s.1[0]])
+            && pairs_m
+                .0
+                .iter()
+                .all(|f| constraints[f] == constraints[&pairs_m.0[0]])
+            && pairs_m
+                .1
+                .iter()
+                .all(|f| constraints[f] == constraints[&pairs_m.1[0]])
+            && pairs_l
+                .0
+                .iter()
+                .all(|f| constraints[f] == constraints[&pairs_l.0[0]])
+            && pairs_l
+                .1
+                .iter()
+                .all(|f| constraints[f] == constraints[&pairs_l.1[0]])
+            && bleh(constraints, &corners).is_some()
     } else {
         false
     }
+}
+
+fn common_length(face_a: &Face, face_b: &Face) -> u8 {
+    if face_a.block != face_b.block {
+        panic!("nu {:?}", (face_a, face_b));
+    }
+    match (face_a.dir, face_b.dir) {
+        (Dir::Front, Dir::Front) => panic!("nope"),
+        (Dir::Front, Dir::Back) => panic!("nope"),
+        (Dir::Front, Dir::Left) => face_a.long,
+        (Dir::Front, Dir::Right) => face_a.long,
+        (Dir::Front, Dir::Top) => face_a.short,
+        (Dir::Front, Dir::Bottom) => face_a.short,
+        (Dir::Back, Dir::Front) => panic!("nope"),
+        (Dir::Back, Dir::Back) => panic!("nope"),
+        (Dir::Back, Dir::Left) => face_a.long,
+        (Dir::Back, Dir::Right) => face_a.long,
+        (Dir::Back, Dir::Top) => face_a.short,
+        (Dir::Back, Dir::Bottom) => face_a.short,
+        (Dir::Left, Dir::Front) => face_a.long,
+        (Dir::Left, Dir::Back) => face_a.long,
+        (Dir::Left, Dir::Left) => panic!("nope"),
+        (Dir::Left, Dir::Right) => panic!("nope"),
+        (Dir::Left, Dir::Top) => face_a.short,
+        (Dir::Left, Dir::Bottom) => face_a.short,
+        (Dir::Right, Dir::Front) => face_a.long,
+        (Dir::Right, Dir::Back) => face_a.long,
+        (Dir::Right, Dir::Left) => panic!("nope"),
+        (Dir::Right, Dir::Right) => panic!("nope"),
+        (Dir::Right, Dir::Top) => face_a.short,
+        (Dir::Right, Dir::Bottom) => face_a.short,
+        (Dir::Top, Dir::Front) => face_a.long,
+        (Dir::Top, Dir::Back) => face_a.long,
+        (Dir::Top, Dir::Left) => face_a.short,
+        (Dir::Top, Dir::Right) => face_a.short,
+        (Dir::Top, Dir::Top) => panic!("nope"),
+        (Dir::Top, Dir::Bottom) => panic!("nope"),
+        (Dir::Bottom, Dir::Front) => face_a.long,
+        (Dir::Bottom, Dir::Back) => face_a.long,
+        (Dir::Bottom, Dir::Left) => face_a.short,
+        (Dir::Bottom, Dir::Right) => face_a.short,
+        (Dir::Bottom, Dir::Top) => panic!("nope"),
+        (Dir::Bottom, Dir::Bottom) => panic!("nope"),
+    }
+}
+
+fn bleh(constraints: HashMap<&Face, Dir>, corners: &[(&Face, &Face, &Face)]) -> Option<()> {
+    debug!("{:?}", corners);
+    let mut state_front = vec![0; HEIGHT as usize * WIDTH as usize];
+    let mut state_back = vec![0; HEIGHT as usize * WIDTH as usize];
+    let mut state_right = vec![0; HEIGHT as usize * DEPTH as usize];
+    let mut state_left = vec![0; HEIGHT as usize * DEPTH as usize];
+    let mut state_top = vec![0; WIDTH as usize * DEPTH as usize];
+    let mut state_bottom = vec![0; WIDTH as usize * DEPTH as usize];
+
+    fn place_at_corner(
+        state: &mut Vec<u8>,
+        rh: u8,
+        rw: u8,
+        x: u8,
+        y: u8,
+        h: u8,
+        w: u8,
+        val: u8,
+    ) -> Option<()> {
+        debug!(
+            "placing val {}-{}x{} @ {:?} on {}x{}",
+            val,
+            h,
+            w,
+            (x, y),
+            rh,
+            rw,
+        );
+        if let Some((_, new_state)) = place(rh, rw, &(x, y), state, h, w, val) {
+            *state = new_state;
+            Some(())
+        } else {
+            debug!(
+                "couldnt place val {}-{}x{} @ {:?} on {}x{}={}",
+                val,
+                h,
+                w,
+                (x, y),
+                rh,
+                rw,
+                state
+                    .iter()
+                    .fold(("".to_string(), 0), |acc, e| (
+                        acc.0 + if acc.1 % rh == 0 { "\n" } else { "" } + &format!("{:0>2} ", e),
+                        acc.1 + 1
+                    ))
+                    .0
+            );
+            None
+        }
+    }
+
+    for corner in corners {
+        let d = common_length(corner.0, corner.1);
+        let h = common_length(corner.1, corner.2);
+        let w = common_length(corner.2, corner.0);
+        match (
+            constraints[corner.0],
+            constraints[corner.1],
+            constraints[corner.2],
+        ) {
+            x @ (Dir::Top, Dir::Right, Dir::Front) => {
+                debug!("placing {:?}", x);
+                // place corner.0 w*d in top @ x=WIDTH-w,y=0
+                place_at_corner(
+                    &mut state_top,
+                    WIDTH,
+                    DEPTH,
+                    0,
+                    DEPTH - d,
+                    w,
+                    d,
+                    corner.0.value,
+                )?;
+                // place corner.1 h*d in right @ x=0,y=0
+                place_at_corner(&mut state_right, HEIGHT, DEPTH, 0, 0, h, d, corner.1.value)?;
+                // place corner.2 h*w in front @ x=0,y=WIDTH-w
+                place_at_corner(
+                    &mut state_front,
+                    HEIGHT,
+                    WIDTH,
+                    0,
+                    WIDTH - w,
+                    h,
+                    w,
+                    corner.2.value,
+                )?;
+            }
+            x @ (Dir::Top, Dir::Right, Dir::Back) => {
+                debug!("placing {:?}", x);
+                // place corner.0 w*d in top @ x=WIDTH-w,y=DEPTH-d
+                place_at_corner(&mut state_top, WIDTH, DEPTH, 0, 0, w, d, corner.0.value)?;
+                // place corner.1 h*d in right @ x=0,y=DEPTH-d
+                place_at_corner(
+                    &mut state_right,
+                    HEIGHT,
+                    DEPTH,
+                    0,
+                    DEPTH - d,
+                    h,
+                    d,
+                    corner.1.value,
+                )?;
+                // place corner.2 h*w in back @ x=0,y=0
+                place_at_corner(&mut state_back, HEIGHT, WIDTH, 0, 0, h, w, corner.2.value)?;
+            }
+            x @ (Dir::Top, Dir::Left, Dir::Front) => {
+                debug!("placing {:?}", x);
+                // place corner.0 w*d in top @ x=WIDTH-w,y=DEPTH-d
+                place_at_corner(
+                    &mut state_top,
+                    WIDTH,
+                    DEPTH,
+                    WIDTH - w,
+                    DEPTH - d,
+                    w,
+                    d,
+                    corner.0.value,
+                )?;
+                // place corner.1 h*d in left @ x=0,y=DEPTH-d
+                place_at_corner(
+                    &mut state_left,
+                    HEIGHT,
+                    DEPTH,
+                    0,
+                    DEPTH - d,
+                    h,
+                    d,
+                    corner.1.value,
+                )?;
+                // place corner.2 h*w in front @ x=0,y=0
+                place_at_corner(&mut state_front, HEIGHT, WIDTH, 0, 0, h, w, corner.2.value)?;
+            }
+            x @ (Dir::Top, Dir::Left, Dir::Back) => {
+                debug!("placing {:?}", x);
+                // place corner.0 w*d in top @ x=WIDTH-w,y=0
+                place_at_corner(
+                    &mut state_top,
+                    WIDTH,
+                    DEPTH,
+                    WIDTH - w,
+                    0,
+                    w,
+                    d,
+                    corner.0.value,
+                )?;
+                // place corner.1 h*d in left @ x=0,y=0
+                place_at_corner(&mut state_left, HEIGHT, DEPTH, 0, 0, h, d, corner.1.value)?;
+                // place corner.2 h*w in back @ x=0,y=WIDTH-w
+                place_at_corner(
+                    &mut state_back,
+                    HEIGHT,
+                    WIDTH,
+                    0,
+                    WIDTH - w,
+                    h,
+                    w,
+                    corner.2.value,
+                )?;
+            }
+            x @ (Dir::Bottom, Dir::Right, Dir::Front) => {
+                debug!("placing {:?}", x);
+                // place corner.0 w*d in bottom @ x=0,y=0
+                place_at_corner(
+                    &mut state_bottom,
+                    WIDTH,
+                    DEPTH,
+                    WIDTH - w,
+                    DEPTH - d,
+                    w,
+                    d,
+                    corner.0.value,
+                )?;
+                // place corner.1 h*d in right @ x=HEIGHT-h,y=0
+                place_at_corner(
+                    &mut state_right,
+                    HEIGHT,
+                    DEPTH,
+                    HEIGHT - h,
+                    0,
+                    h,
+                    d,
+                    corner.1.value,
+                )?;
+                // place corner.2 h*w in front @ x=HEIGHT-h,y=WIDTH-w
+                place_at_corner(
+                    &mut state_front,
+                    HEIGHT,
+                    WIDTH,
+                    HEIGHT - h,
+                    WIDTH - w,
+                    h,
+                    w,
+                    corner.2.value,
+                )?;
+            }
+            x @ (Dir::Bottom, Dir::Right, Dir::Back) => {
+                debug!("placing {:?}", x);
+                // place corner.0 w*d in bottom @ x=0,y=DEPTH-d
+                place_at_corner(
+                    &mut state_bottom,
+                    WIDTH,
+                    DEPTH,
+                    WIDTH - w,
+                    0,
+                    w,
+                    d,
+                    corner.0.value,
+                )?;
+                // place corner.1 h*d in right @ x=HEIGHT-h,y=DEPTH-d
+                place_at_corner(
+                    &mut state_right,
+                    HEIGHT,
+                    DEPTH,
+                    HEIGHT - h,
+                    DEPTH - d,
+                    h,
+                    d,
+                    corner.1.value,
+                )?;
+                // place corner.2 h*w in back @ x=HEIGHT-h,y=0
+                place_at_corner(
+                    &mut state_back,
+                    HEIGHT,
+                    WIDTH,
+                    HEIGHT - h,
+                    0,
+                    h,
+                    w,
+                    corner.2.value,
+                )?;
+            }
+            x @ (Dir::Bottom, Dir::Left, Dir::Front) => {
+                debug!("placing {:?}", x);
+                // place corner.0 w*d in bottom @ x=0,y=DEPTH-d
+                place_at_corner(
+                    &mut state_bottom,
+                    WIDTH,
+                    DEPTH,
+                    0,
+                    DEPTH - d,
+                    w,
+                    d,
+                    corner.0.value,
+                )?;
+                // place corner.1 h*d in left @ x=HEIGHT-h,y=DEPTH-d
+                place_at_corner(
+                    &mut state_left,
+                    HEIGHT,
+                    DEPTH,
+                    HEIGHT - h,
+                    DEPTH - d,
+                    h,
+                    d,
+                    corner.1.value,
+                )?;
+                // place corner.2 h*w in front @ x=HEIGHT-h,y=0
+                place_at_corner(
+                    &mut state_front,
+                    HEIGHT,
+                    WIDTH,
+                    HEIGHT - h,
+                    0,
+                    h,
+                    w,
+                    corner.2.value,
+                )?;
+            }
+            x @ (Dir::Bottom, Dir::Left, Dir::Back) => {
+                debug!("placing {:?}", x);
+                // place corner.0 w*d in bottom @ x=0,y=0
+                place_at_corner(&mut state_bottom, WIDTH, DEPTH, 0, 0, w, d, corner.0.value)?;
+                // place corner.1 h*d in left @ x=HEIGHT-h,y=DEPTH-d
+                place_at_corner(
+                    &mut state_left,
+                    HEIGHT,
+                    DEPTH,
+                    HEIGHT - h,
+                    0,
+                    h,
+                    d,
+                    corner.1.value,
+                )?;
+                // place corner.2 h*w in back @ x=HEIGHT-h,y=WIDTH-w
+                place_at_corner(
+                    &mut state_back,
+                    HEIGHT,
+                    WIDTH,
+                    HEIGHT - h,
+                    WIDTH - w,
+                    h,
+                    w,
+                    corner.2.value,
+                )?;
+            }
+            _ => panic!("ni {:?}", corner),
+        }
+    }
+    // TODO test non corner edges too
+    let visible_faces_per_block = constraints.iter().fold(
+        HashMap::new(),
+        |mut acc: HashMap<u8, Vec<(&Face, Dir)>>, (face, dir)| {
+            if let Some(v) = acc.get_mut(&face.block) {
+                v.push((face, *dir));
+            } else {
+                acc.insert(face.block, vec![(face, *dir)]);
+            }
+            acc
+        },
+    );
+    let edges = visible_faces_per_block
+        .into_values()
+        .filter(|v| v.len() == 2 && v[0].0.dir != v[1].0.dir.opposite())
+        .collect_vec();
+
+    for edge in edges {
+        match (edge[0].0.dir, edge[1].0.dir) {
+            (Dir::Front, Dir::Left) => todo!(),
+            (Dir::Front, Dir::Right) => todo!(),
+            (Dir::Front, Dir::Top) => todo!(),
+            (Dir::Front, Dir::Bottom) => todo!(),
+            (Dir::Back, Dir::Left) => todo!(),
+            (Dir::Back, Dir::Right) => todo!(),
+            (Dir::Back, Dir::Top) => todo!(),
+            (Dir::Back, Dir::Bottom) => todo!(),
+            (Dir::Left, Dir::Front) => todo!(),
+            (Dir::Left, Dir::Back) => todo!(),
+            (Dir::Left, Dir::Top) => todo!(),
+            (Dir::Left, Dir::Bottom) => todo!(),
+            (Dir::Right, Dir::Front) => todo!(),
+            (Dir::Right, Dir::Back) => todo!(),
+            (Dir::Right, Dir::Top) => todo!(),
+            (Dir::Right, Dir::Bottom) => todo!(),
+            (Dir::Top, Dir::Front) => todo!(),
+            (Dir::Top, Dir::Back) => todo!(),
+            (Dir::Top, Dir::Left) => todo!(),
+            (Dir::Top, Dir::Right) => todo!(),
+            (Dir::Bottom, Dir::Front) => todo!(),
+            (Dir::Bottom, Dir::Back) => todo!(),
+            (Dir::Bottom, Dir::Left) => todo!(),
+            (Dir::Bottom, Dir::Right) => todo!(),
+            _ => panic!("nu {:?}", edge),
+        }
+    }
+    Some(())
 }
 
 fn is_corner_possible(corner: &(&Face, &Face, &Face), constraints: &HashMap<&Face, Dir>) -> bool {
