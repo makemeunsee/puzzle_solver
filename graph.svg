@@ -1,0 +1,356 @@
+<svg viewBox="-6 -6 12 12" xmlns="http://www.w3.org/2000/svg">
+<g>
+<path d="M0,0 L0,-1 L0.8660254,-1.5 L1.7320508,0 L0.8660254,0.5 z" fill="none" stroke="mediumblue" stroke-width="0.01"/>
+<path d="M0,0 L-0.8660254,0.5 L-1.7320508,0 L-0.8660254,-1.5 L0,-1 z" fill="none" stroke="mediumblue" stroke-width="0.01"/>
+<path d="M0,0 L0.8660254,0.5 L0.8660254,1.5 L-0.8660254,1.5 L-0.8660254,0.5 z" fill="none" stroke="mediumblue" stroke-width="0.01"/>
+<path d="M1.7320508,0 L0.8660254,-1.5 L0.8660254,-2.5 L2.598076,-1.5 L2.598076,0.5 z" fill="none" stroke="mediumblue" stroke-width="0.01"/>
+<path d="M-0.8660254,-1.5 L-1.7320508,0 L-2.598076,0.5 L-2.598076,-1.5 L-0.8660254,-2.5 z" fill="none" stroke="mediumblue" stroke-width="0.01"/>
+<path d="M-0.8660254,1.5 L0.8660254,1.5 L1.7320508,2 L0,3 L-1.7320508,2 z" fill="none" stroke="mediumblue" stroke-width="0.01"/>
+<path d="M0.8660254,0.5 L1.7320508,0 L2.598076,0.5 L1.7320508,2 L0.8660254,1.5 z" fill="none" stroke="mediumblue" stroke-width="0.01"/>
+<path d="M0,-1 L-0.8660254,-1.5 L-0.8660254,-2.5 L0.8660254,-2.5 L0.8660254,-1.5 z" fill="none" stroke="mediumblue" stroke-width="0.01"/>
+<path d="M-0.8660254,0.5 L-0.8660254,1.5 L-1.7320508,2 L-2.598076,0.5 L-1.7320508,0 z" fill="none" stroke="mediumblue" stroke-width="0.01"/>
+<path d="M2.598076,-1.5 L4.3301272,-2.5 z" fill="none" stroke="mediumblue" stroke-width="0.01"/>
+<path d="M-2.598076,-1.5 L-4.3301272,-2.5 z" fill="none" stroke="mediumblue" stroke-width="0.01"/>
+<path d="M0,3 L0,5 z" fill="none" stroke="mediumblue" stroke-width="0.01"/>
+</g>
+<g>
+<circle cx="0" cy="0" fill="mediumblue" r="0.03"/>
+<circle cx="0.8660254037844387" cy="0.49999999999999994" fill="mediumblue" r="0.03"/>
+<circle cx="0" cy="-1" fill="mediumblue" r="0.03"/>
+<circle cx="-0.8660254037844387" cy="0.49999999999999994" fill="mediumblue" r="0.03"/>
+<circle cx="1.7320508075688774" cy="0" fill="mediumblue" r="0.03"/>
+<circle cx="0.8660254037844387" cy="-1.5" fill="mediumblue" r="0.03"/>
+<circle cx="-0.8660254037844387" cy="-1.5" fill="mediumblue" r="0.03"/>
+<circle cx="-1.7320508075688774" cy="0" fill="mediumblue" r="0.03"/>
+<circle cx="-0.8660254037844387" cy="1.5" fill="mediumblue" r="0.03"/>
+<circle cx="0.8660254037844387" cy="1.5" fill="mediumblue" r="0.03"/>
+<circle cx="2.598076211353316" cy="0.49999999999999994" fill="mediumblue" r="0.03"/>
+<circle cx="0.8660254037844387" cy="-2.5" fill="mediumblue" r="0.03"/>
+<circle cx="-0.8660254037844387" cy="-2.5" fill="mediumblue" r="0.03"/>
+<circle cx="-2.598076211353316" cy="0.49999999999999994" fill="mediumblue" r="0.03"/>
+<circle cx="-1.7320508075688774" cy="2" fill="mediumblue" r="0.03"/>
+<circle cx="1.7320508075688774" cy="2" fill="mediumblue" r="0.03"/>
+<circle cx="2.598076211353316" cy="-1.4999999999999998" fill="mediumblue" r="0.03"/>
+<circle cx="-2.598076211353316" cy="-1.4999999999999998" fill="mediumblue" r="0.03"/>
+<circle cx="0" cy="3" fill="mediumblue" r="0.03"/>
+</g>
+<g>
+<path d="M0.6928203,-0.4 L0,-0.5 M0.6928203,-0.4 L0.4330127,-1.25 M0.6928203,-0.4 L1.299038,-0.75 M0.6928203,-0.4 L1.299038,0.25 M0.6928203,-0.4 L0.4330127,0.25 z" fill="none" stroke="limegreen" stroke-width="0.01"/>
+<path d="M-0.6928203,-0.4 L-0.4330127,0.25 M-0.6928203,-0.4 L-1.299038,0.25 M-0.6928203,-0.4 L-1.299038,-0.75 M-0.6928203,-0.4 L-0.4330127,-1.25 M-0.6928203,-0.4 L0,-0.5 z" fill="none" stroke="limegreen" stroke-width="0.01"/>
+<path d="M0,0.8 L0.4330127,0.25 M0,0.8 L0.8660254,1 M0,0.8 L0,1.5 M0,0.8 L-0.8660254,1 M0,0.8 L-0.4330127,0.25 z" fill="none" stroke="limegreen" stroke-width="0.01"/>
+<path d="M1.7320508,-1 L1.299038,-0.75 M1.7320508,-1 L0.8660254,-2 M1.7320508,-1 L1.7320508,-2 M1.7320508,-1 L2.598076,-0.5 M1.7320508,-1 L2.1650636,0.25 z" fill="none" stroke="limegreen" stroke-width="0.01"/>
+<path d="M-1.7320508,-1 L-1.299038,-0.75 M-1.7320508,-1 L-2.1650636,0.25 M-1.7320508,-1 L-2.598076,-0.5 M-1.7320508,-1 L-1.7320508,-2 M-1.7320508,-1 L-0.8660254,-2 z" fill="none" stroke="limegreen" stroke-width="0.01"/>
+<path d="M0,2 L0,1.5 M0,2 L1.299038,1.75 M0,2 L0.8660254,2.5 M0,2 L-0.8660254,2.5 M0,2 L-1.299038,1.75 z" fill="none" stroke="limegreen" stroke-width="0.01"/>
+<path d="M1.5588458,0.9 L1.299038,0.25 M1.5588458,0.9 L2.1650636,0.25 M1.5588458,0.9 L2.1650636,1.25 M1.5588458,0.9 L1.299038,1.75 M1.5588458,0.9 L0.8660254,1 z" fill="none" stroke="limegreen" stroke-width="0.01"/>
+<path d="M0,-1.8 L-0.4330127,-1.25 M0,-1.8 L-0.8660254,-2 M0,-1.8 L0,-2.5 M0,-1.8 L0.8660254,-2 M0,-1.8 L0.4330127,-1.25 z" fill="none" stroke="limegreen" stroke-width="0.01"/>
+<path d="M-1.5588458,0.9 L-0.8660254,1 M-1.5588458,0.9 L-1.299038,1.75 M-1.5588458,0.9 L-2.1650636,1.25 M-1.5588458,0.9 L-2.1650636,0.25 M-1.5588458,0.9 L-1.299038,0.25 z" fill="none" stroke="limegreen" stroke-width="0.01"/>
+<path d="M0,-4 L3.4641016,-2 M0,-4 L1.7320508,-2 M0,-4 L0,-2.5 M0,-4 L-1.7320508,-2 M0,-4 L-3.4641016,-2 z" fill="none" stroke="limegreen" stroke-width="0.01"/>
+<path d="M-3.4641016,2 L-3.4641016,-2 M-3.4641016,2 L-2.598076,-0.5 M-3.4641016,2 L-2.1650636,1.25 M-3.4641016,2 L-0.8660254,2.5 M-3.4641016,2 L0,4 z" fill="none" stroke="limegreen" stroke-width="0.01"/>
+<path d="M3.4641016,2 L0,4 M3.4641016,2 L0.8660254,2.5 M3.4641016,2 L2.1650636,1.25 M3.4641016,2 L2.598076,-0.5 M3.4641016,2 L3.4641016,-2 z" fill="none" stroke="limegreen" stroke-width="0.01"/>
+</g>
+<g>
+<circle cx="0.6928203230275509" cy="-0.4" fill="limegreen" r="0.03"/>
+<circle cx="-0.6928203230275509" cy="-0.4" fill="limegreen" r="0.03"/>
+<circle cx="0" cy="0.8" fill="limegreen" r="0.03"/>
+<circle cx="1.7320508075688774" cy="-1" fill="limegreen" r="0.03"/>
+<circle cx="-1.7320508075688774" cy="-1" fill="limegreen" r="0.03"/>
+<circle cx="0" cy="2" fill="limegreen" r="0.03"/>
+<circle cx="1.5588457268119895" cy="0.9" fill="limegreen" r="0.03"/>
+<circle cx="0" cy="-1.8" fill="limegreen" r="0.03"/>
+<circle cx="-1.5588457268119897" cy="0.9" fill="limegreen" r="0.03"/>
+<circle cx="0" cy="-4" fill="limegreen" r="0.03"/>
+<circle cx="-3.464101615137755" cy="1.9999999999999998" fill="limegreen" r="0.03"/>
+<circle cx="3.464101615137755" cy="1.9999999999999998" fill="limegreen" r="0.03"/>
+<circle cx="0" cy="-4" fill="limegreen" r="0.03"/>
+<circle cx="-3.464101615137755" cy="1.9999999999999998" fill="limegreen" r="0.03"/>
+<circle cx="3.464101615137755" cy="1.9999999999999998" fill="limegreen" r="0.03"/>
+</g>
+<g>
+<text style="font-size:0.2px;fill:darkblue" x="0.1" y="0.1">
+I0
+</text>
+<text style="font-size:0.2px;fill:darkblue" x="0.9660254037844387" y="0.6">
+I1
+</text>
+<text style="font-size:0.2px;fill:darkblue" x="0.1" y="-0.9">
+I2
+</text>
+<text style="font-size:0.2px;fill:darkblue" x="-0.7660254037844387" y="0.6">
+I3
+</text>
+<text style="font-size:0.2px;fill:darkblue" x="1.8320508075688775" y="0.1">
+I4
+</text>
+<text style="font-size:0.2px;fill:darkblue" x="0.9660254037844387" y="-1.4">
+I5
+</text>
+<text style="font-size:0.2px;fill:darkblue" x="-0.7660254037844387" y="-1.4">
+I6
+</text>
+<text style="font-size:0.2px;fill:darkblue" x="-1.6320508075688773" y="0.1">
+I7
+</text>
+<text style="font-size:0.2px;fill:darkblue" x="-0.7660254037844387" y="1.6">
+I8
+</text>
+<text style="font-size:0.2px;fill:darkblue" x="0.9660254037844387" y="1.6">
+I9
+</text>
+<text style="font-size:0.2px;fill:darkblue" x="2.698076211353316" y="0.6">
+I10
+</text>
+<text style="font-size:0.2px;fill:darkblue" x="0.9660254037844387" y="-2.4">
+I11
+</text>
+<text style="font-size:0.2px;fill:darkblue" x="-0.7660254037844387" y="-2.4">
+I12
+</text>
+<text style="font-size:0.2px;fill:darkblue" x="-2.498076211353316" y="0.6">
+I13
+</text>
+<text style="font-size:0.2px;fill:darkblue" x="-1.6320508075688773" y="2.1">
+I14
+</text>
+<text style="font-size:0.2px;fill:darkblue" x="1.8320508075688775" y="2.1">
+I15
+</text>
+<text style="font-size:0.2px;fill:darkblue" x="2.698076211353316" y="-1.3999999999999997">
+I16
+</text>
+<text style="font-size:0.2px;fill:darkblue" x="-2.498076211353316" y="-1.3999999999999997">
+I17
+</text>
+<text style="font-size:0.2px;fill:darkblue" x="0.1" y="3.1">
+I18
+</text>
+<text style="font-size:0.2px;fill:darkblue" x="4.430127018922193" y="-2.3999999999999995">
+(I19)
+</text>
+<text style="font-size:0.2px;fill:darkblue" x="-4.230127018922194" y="-2.3999999999999995">
+(I19)
+</text>
+<text style="font-size:0.2px;fill:darkblue" x="0.1" y="5.1">
+(I19)
+</text>
+</g>
+<g>
+<text style="font-size:0.2px;fill:green" x="0.5928203230275509" y="-0.5">
+D0
+</text>
+<text style="font-size:0.2px;fill:green" x="-0.7928203230275509" y="-0.5">
+D1
+</text>
+<text style="font-size:0.2px;fill:green" x="-0.1" y="0.7000000000000001">
+D2
+</text>
+<text style="font-size:0.2px;fill:green" x="1.6320508075688773" y="-1.1">
+D3
+</text>
+<text style="font-size:0.2px;fill:green" x="-1.8320508075688775" y="-1.1">
+D4
+</text>
+<text style="font-size:0.2px;fill:green" x="-0.1" y="1.9">
+D5
+</text>
+<text style="font-size:0.2px;fill:green" x="1.4588457268119894" y="0.8">
+D6
+</text>
+<text style="font-size:0.2px;fill:green" x="-0.1" y="-1.9000000000000001">
+D7
+</text>
+<text style="font-size:0.2px;fill:green" x="-1.6588457268119898" y="0.8">
+D8
+</text>
+<text style="font-size:0.2px;fill:green" x="-0.1" y="-4.1">
+D9
+</text>
+<text style="font-size:0.2px;fill:green" x="-3.564101615137755" y="1.8999999999999997">
+D10
+</text>
+<text style="font-size:0.2px;fill:green" x="3.3641016151377547" y="1.8999999999999997">
+D11
+</text>
+</g>
+<g>
+<text style="font-size:0.1px" x="0.34641016151377546" y="-0.2">
+f0
+</text>
+<text style="font-size:0.1px" x="0.34641016151377546" y="-0.7">
+f1
+</text>
+<text style="font-size:0.1px" x="0.7794228634059948" y="-0.95">
+f2
+</text>
+<text style="font-size:0.1px" x="1.2124355652982142" y="-0.2">
+f3
+</text>
+<text style="font-size:0.1px" x="0.7794228634059948" y="0.04999999999999996">
+f4
+</text>
+<text style="font-size:0.1px" x="-0.34641016151377546" y="-0.2">
+f5
+</text>
+<text style="font-size:0.1px" x="-0.7794228634059948" y="0.04999999999999996">
+f6
+</text>
+<text style="font-size:0.1px" x="-1.2124355652982142" y="-0.2">
+f7
+</text>
+<text style="font-size:0.1px" x="-0.7794228634059948" y="-0.95">
+f8
+</text>
+<text style="font-size:0.1px" x="-0.34641016151377546" y="-0.7">
+f9
+</text>
+<text style="font-size:0.1px" x="0" y="0.4">
+f10
+</text>
+<text style="font-size:0.1px" x="0.43301270189221935" y="0.65">
+f11
+</text>
+<text style="font-size:0.1px" x="0.43301270189221935" y="1.15">
+f12
+</text>
+<text style="font-size:0.1px" x="-0.43301270189221935" y="1.15">
+f13
+</text>
+<text style="font-size:0.1px" x="-0.43301270189221935" y="0.65">
+f14
+</text>
+<text style="font-size:0.1px" x="1.7320508075688774" y="-0.5">
+f15
+</text>
+<text style="font-size:0.1px" x="1.299038105676658" y="-1.25">
+f16
+</text>
+<text style="font-size:0.1px" x="1.299038105676658" y="-1.75">
+f17
+</text>
+<text style="font-size:0.1px" x="2.165063509461097" y="-1.25">
+f18
+</text>
+<text style="font-size:0.1px" x="2.165063509461097" y="-0.25">
+f19
+</text>
+<text style="font-size:0.1px" x="-1.299038105676658" y="-1.25">
+f20
+</text>
+<text style="font-size:0.1px" x="-1.7320508075688774" y="-0.5">
+f21
+</text>
+<text style="font-size:0.1px" x="-2.165063509461097" y="-0.25">
+f22
+</text>
+<text style="font-size:0.1px" x="-2.165063509461097" y="-1.25">
+f23
+</text>
+<text style="font-size:0.1px" x="-1.299038105676658" y="-1.75">
+f24
+</text>
+<text style="font-size:0.1px" x="-0.43301270189221935" y="1.75">
+f25
+</text>
+<text style="font-size:0.1px" x="0.43301270189221935" y="1.75">
+f26
+</text>
+<text style="font-size:0.1px" x="0.8660254037844387" y="2">
+f27
+</text>
+<text style="font-size:0.1px" x="0" y="2.5">
+f28
+</text>
+<text style="font-size:0.1px" x="-0.8660254037844387" y="2">
+f29
+</text>
+<text style="font-size:0.1px" x="1.2124355652982142" y="0.7">
+f30
+</text>
+<text style="font-size:0.1px" x="1.6454482671904334" y="0.45">
+f31
+</text>
+<text style="font-size:0.1px" x="2.078460969082653" y="0.7">
+f32
+</text>
+<text style="font-size:0.1px" x="1.6454482671904334" y="1.45">
+f33
+</text>
+<text style="font-size:0.1px" x="1.2124355652982142" y="1.2">
+f34
+</text>
+<text style="font-size:0.1px" x="0" y="-1.4">
+f35
+</text>
+<text style="font-size:0.1px" x="-0.43301270189221935" y="-1.65">
+f36
+</text>
+<text style="font-size:0.1px" x="-0.43301270189221935" y="-2.15">
+f37
+</text>
+<text style="font-size:0.1px" x="0.43301270189221935" y="-2.15">
+f38
+</text>
+<text style="font-size:0.1px" x="0.43301270189221935" y="-1.65">
+f39
+</text>
+<text style="font-size:0.1px" x="-1.2124355652982142" y="0.7">
+f40
+</text>
+<text style="font-size:0.1px" x="-1.2124355652982142" y="1.2">
+f41
+</text>
+<text style="font-size:0.1px" x="-1.6454482671904336" y="1.45">
+f42
+</text>
+<text style="font-size:0.1px" x="-2.078460969082653" y="0.7">
+f43
+</text>
+<text style="font-size:0.1px" x="-1.6454482671904336" y="0.45">
+f44
+</text>
+<text style="font-size:0.1px" x="0.43301270189221935" y="-3.25">
+f45
+</text>
+<text style="font-size:0.1px" x="-0.43301270189221935" y="-3.25">
+f46
+</text>
+<text style="font-size:0.1px" x="-1.299038105676658" y="-2.75">
+f47
+</text>
+<text style="font-size:0.1px" x="2.165063509461097" y="-3.25">
+f48
+</text>
+<text style="font-size:0.1px" x="1.299038105676658" y="-2.75">
+f49
+</text>
+<text style="font-size:0.1px" x="-3.0310889132455356" y="1.2499999999999998">
+f50
+</text>
+<text style="font-size:0.1px" x="-2.598076211353316" y="2">
+f51
+</text>
+<text style="font-size:0.1px" x="-1.7320508075688774" y="2.5">
+f52
+</text>
+<text style="font-size:0.1px" x="-3.897114317029974" y="-0.2499999999999999">
+f53
+</text>
+<text style="font-size:0.1px" x="-3.0310889132455356" y="0.25">
+f54
+</text>
+<text style="font-size:0.1px" x="3.0310889132455356" y="1.2499999999999998">
+f55
+</text>
+<text style="font-size:0.1px" x="3.0310889132455356" y="0.25">
+f56
+</text>
+<text style="font-size:0.1px" x="1.7320508075688774" y="3.5">
+f57
+</text>
+<text style="font-size:0.1px" x="1.7320508075688774" y="2.5">
+f58
+</text>
+<text style="font-size:0.1px" x="2.598076211353316" y="2">
+f59
+</text>
+</g>
+</svg>

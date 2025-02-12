@@ -2,7 +2,7 @@
 resolver = "2"
 members = [
 	"solvers",
-	"gui",
+	# "gui",
 	"native",
-	"web",
+	# "web",
 ]
