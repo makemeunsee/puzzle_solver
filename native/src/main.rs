@@ -42,8 +42,10 @@ fn main() {
     let pentas = generate_one(&triplets, seed);
     println!("{:?}", pentas);
 
-    let sols = pentas_on_ico(&pentas);
-    println!("{:?}", sols);
+    // let sols = pentas_on_ico(&pentas);
+    // println!("{:?}", sols);
+
+    gui::demo_3d();
 }
 
 fn generate_inf(triplets: &[(i32, i32, i32); 20], mut seed: u64) {
@@ -85,7 +87,7 @@ fn generate_one(triplets: &[(i32, i32, i32); 20], seed: u64) -> [[i32; 5]; 12] {
     pentas
 }
 
-// given N>=12 pentas of 5 facets, try to place them on the vertices of an icosaedron.
+// given N>=12 pentas of 5 facets, try to place them on the vertices of an icosahedron.
 // 3 touching facets of 3 touching pentas make up a triangle (icosa face).
 // the sum of the value of the facets of a triangle must equal 96.
 // returns all found valid combinations of pentas configuration

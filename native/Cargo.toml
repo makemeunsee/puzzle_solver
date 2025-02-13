@@ -7,7 +7,7 @@ edition = "2021"
 env_logger = "0.11.6"
 itertools = "0.14.0"
 log = "0.4.25"
-# gui = { path = "../gui" }
+gui = { path = "../gui" }
 rand = "0.9"
 solvers = { path = "../solvers" }
 svg = "0.18"
