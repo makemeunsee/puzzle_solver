@@ -335,15 +335,13 @@ pub fn demo_3d() {
     ];
     let translation_base = Polyhedron::ico_facet().positions[0];
 
+    let instances = Instances {
+        transformations: transformations_base.clone(),
+        colors: Some(vec![Srgba::GREEN; transformations_base.len()]),
+        ..Default::default()
+    };
     let mut instanced_facets = Gm::new(
-        InstancedMesh::new(
-            &context,
-            &Instances {
-                transformations: transformations_base.clone(),
-                ..Default::default()
-            },
-            &facet_mesh,
-        ),
+        InstancedMesh::new(&context, &instances, &facet_mesh),
         PhysicalMaterial::new(&context, &dodeca_mat),
     );
     instanced_facets.material.render_states.cull = Cull::Back;
@@ -424,7 +422,8 @@ pub fn demo_3d() {
     let mut shadows_enabled = true;
     let mut show_plane = true;
     let mut show_dodeca = false;
-    let mut trans_factor = 2.0;
+    let mut trans_factor = 0.02;
+    let mut facet_rot = 0.0;
     let mut material_type = MaterialType::Forward;
 
     let mut time_d0 = 0.;
@@ -437,6 +436,8 @@ pub fn demo_3d() {
     let mut speed_s0 = 3;
     let mut speed_p0 = 3;
     let mut speed_p1 = 3;
+
+    let mut picked_facet_id = None;
 
     window.render_loop(move |mut frame_input| {
         let mut panel_width = 0.0;
@@ -469,7 +470,8 @@ pub fn demo_3d() {
                         directional0.clear_shadow_map();
                         directional1.clear_shadow_map();
                     }
-                    ui.add(Slider::new(&mut trans_factor, -50.0..=50.0).text("Facet break out"));
+                    ui.add(Slider::new(&mut trans_factor, -2.5..=2.5).text("Facet break out"));
+                    ui.add(Slider::new(&mut facet_rot, 0.0..=50.0).text("Facet rotation"));
 
                     ui.add(three_d::egui::Separator::default());
 
@@ -512,6 +514,27 @@ pub fn demo_3d() {
             height: frame_input.viewport.height,
         };
         camera.set_viewport(viewport);
+
+        for event in frame_input.events.iter() {
+            if let Event::MousePress {
+                button, position, ..
+            } = *event
+            {
+                if button == MouseButton::Left {
+                    if let Some(pick) = pick(&context, &camera, position, &instanced_facets) {
+                        match pick.geometry_id {
+                            0 => {
+                                picked_facet_id = Some(pick.instance_id);
+                            }
+                            _ => {
+                                unreachable!()
+                            }
+                        };
+                    }
+                }
+            }
+        }
+
         control.handle_events(&mut camera, &mut frame_input.events);
 
         time_d0 += (speed_d0 * speed_d0) as f32 * 0.0001 * frame_input.elapsed_time as f32;
@@ -536,11 +559,28 @@ pub fn demo_3d() {
         let s = time_p1.sin();
         point1.position = vec3(5.0 * c, 5.0, 5.0 * s);
 
+        let colors = picked_facet_id.map(|id| {
+            (0..transformations_base.len())
+                .map(|i| {
+                    if i == id as usize {
+                        Srgba::GREEN
+                    } else {
+                        Srgba::WHITE
+                    }
+                })
+                .collect_vec()
+        });
         instanced_facets.set_instances(&Instances {
             transformations: transformations_base
                 .iter()
-                .map(|mat| mat * Mat4::from_translation(translation_base * trans_factor * 0.05))
+                .map(|mat| {
+                    mat * Mat4::from_axis_angle(
+                        translation_base.normalize(),
+                        degrees(7.2 * facet_rot),
+                    ) * Mat4::from_translation(translation_base * trans_factor)
+                })
                 .collect_vec(),
+            colors,
             ..Default::default()
         });
 
