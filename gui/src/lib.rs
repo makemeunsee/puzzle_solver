@@ -404,26 +404,14 @@ pub fn demo_3d() {
             quadratic: 0.005,
         },
     );
-    // will need 20
-    // let colors = HashMap::from([
-    //     (0, (255, 0, 0)),
-    //     (1, (0, 255, 0)),
-    //     (2, (0, 0, 255)),
-    //     (3, (255, 255, 0)),
-    //     (4, (255, 0, 255)),
-    //     (5, (0, 255, 255)),
-    //     (6, (110, 110, 110)),
-    //     (7, (255, 127, 0)),
-    //     (8, (160, 80, 0)),
-    // ]);
 
     // let mut show_numbers = true;
 
-    let mut shadows_enabled = true;
-    let mut show_plane = true;
+    let mut shadows_enabled = false;
+    let mut show_plane = false;
     let mut show_dodeca = false;
     let mut trans_factor = 0.02;
-    let mut facet_rot = 0.0;
+    let mut facet_rot_speed = 10.0;
     let mut material_type = MaterialType::Forward;
 
     let mut time_d0 = 0.;
@@ -438,6 +426,8 @@ pub fn demo_3d() {
     let mut speed_p1 = 3;
 
     let mut picked_facet_id = None;
+    let mut pick_time = 0.;
+    let mut rotating = [0.0; 12];
 
     window.render_loop(move |mut frame_input| {
         let mut panel_width = 0.0;
@@ -471,7 +461,9 @@ pub fn demo_3d() {
                         directional1.clear_shadow_map();
                     }
                     ui.add(Slider::new(&mut trans_factor, -2.5..=2.5).text("Facet break out"));
-                    ui.add(Slider::new(&mut facet_rot, 0.0..=50.0).text("Facet rotation"));
+                    ui.add(
+                        Slider::new(&mut facet_rot_speed, 1.0..=20.0).text("Facet rotation speed"),
+                    );
 
                     ui.add(three_d::egui::Separator::default());
 
@@ -524,7 +516,42 @@ pub fn demo_3d() {
                     if let Some(pick) = pick(&context, &camera, position, &instanced_facets) {
                         match pick.geometry_id {
                             0 => {
-                                picked_facet_id = Some(pick.instance_id);
+                                let new_id = pick.instance_id;
+                                let new_time = frame_input.accumulated_time;
+                                let delta = new_time - pick_time;
+                                let double_clicking = delta < 500.;
+                                picked_facet_id = match (picked_facet_id, double_clicking) {
+                                    (Some(id), false) if id == new_id => {
+                                        pick_time = new_time;
+                                        None
+                                    }
+                                    (Some(_), false) => {
+                                        pick_time = new_time;
+                                        Some(new_id)
+                                    }
+                                    (Some(id), true) if id == new_id => {
+                                        if rotating[id as usize] == 0. {
+                                            rotating[id as usize] = 72.;
+                                        }
+                                        pick_time = new_time;
+                                        Some(id)
+                                    }
+                                    (Some(_), true) => {
+                                        pick_time = new_time;
+                                        Some(new_id)
+                                    }
+                                    (None, false) => {
+                                        pick_time = new_time;
+                                        Some(new_id)
+                                    }
+                                    (None, true) => {
+                                        if rotating[new_id as usize] == 0. {
+                                            rotating[new_id as usize] = 72.;
+                                        }
+                                        pick_time = new_time;
+                                        Some(new_id)
+                                    }
+                                };
                             }
                             _ => {
                                 unreachable!()
@@ -573,11 +600,24 @@ pub fn demo_3d() {
         instanced_facets.set_instances(&Instances {
             transformations: transformations_base
                 .iter()
-                .map(|mat| {
-                    mat * Mat4::from_axis_angle(
-                        translation_base.normalize(),
-                        degrees(7.2 * facet_rot),
-                    ) * Mat4::from_translation(translation_base * trans_factor)
+                .enumerate()
+                .map(|(i, mat)| {
+                    let rot = rotating[i];
+                    if rot != 0. {
+                        let next_rot = f32::max(
+                            0.0,
+                            (rot - (7.2 * frame_input.elapsed_time as f32 * facet_rot_speed
+                                / 200.0))
+                                % 72.0,
+                        );
+                        let mat = mat
+                            * Mat4::from_axis_angle(translation_base.normalize(), degrees(rot))
+                            * Mat4::from_translation(translation_base * trans_factor);
+                        rotating[i] = next_rot;
+                        mat
+                    } else {
+                        mat * Mat4::from_translation(translation_base * trans_factor)
+                    }
                 })
                 .collect_vec(),
             colors,
