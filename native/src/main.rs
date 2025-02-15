@@ -45,7 +45,7 @@ fn main() {
     // let sols = pentas_on_ico(&pentas);
     // println!("{:?}", sols);
 
-    gui::demo_3d();
+    gui::demo_3d(&pentas);
 }
 
 fn generate_inf(triplets: &[(i32, i32, i32); 20], mut seed: u64) {
@@ -68,6 +68,7 @@ fn generate_one(triplets: &[(i32, i32, i32); 20], seed: u64) -> [[i32; 5]; 12] {
     triangles.shuffle(&mut rng);
     let mut facets = [0; 60];
     for tri in 0..20 {
+        // biased but soooo negligibly
         let rotation = rng.next_u32() % 3;
         let facet = TRI_TO_FACETS[triangles[tri]];
         facets[facet[rotation as usize]] = triplets[tri].0;
@@ -84,6 +85,23 @@ fn generate_one(triplets: &[(i32, i32, i32); 20], seed: u64) -> [[i32; 5]; 12] {
         .unwrap();
     info!("PENTAS:\n{:?}", PENTAS);
     info!("pentas:\n{:?}", pentas);
+    let mut pentas_shuffled = pentas;
+    pentas_shuffled.shuffle(&mut rng);
+    pentas_shuffled = pentas_shuffled
+        .into_iter()
+        .map(|penta| {
+            // biased but soooo negligibly
+            let shift = rng.next_u32() as usize % 5;
+            let mut result = [0; 5];
+            for i in 0..5 {
+                result[(i + shift) % 5] = penta[i];
+            }
+            result
+        })
+        .collect_array()
+        .unwrap();
+    info!("pentas shuffled:\n{:?}", pentas_shuffled);
+    // pentas_shuffled
     pentas
 }
 

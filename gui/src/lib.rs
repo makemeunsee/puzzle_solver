@@ -1,4 +1,6 @@
 use itertools::Itertools;
+use log::debug;
+use solvers::dodeca::TRI_TO_FACETS;
 use three_d::*;
 
 #[derive(Debug, Eq, PartialEq)]
@@ -191,7 +193,14 @@ impl Polyhedron {
     }
 }
 
-pub fn demo_3d() {
+fn win(state: &[i32; 60]) -> bool {
+    TRI_TO_FACETS
+        .iter()
+        .map(|&[a, b, c]| state[a] + state[b] + state[c])
+        .all(|sum| sum == 96)
+}
+
+pub fn demo_3d(pentas: &[[i32; 5]; 12]) {
     let window = Window::new(WindowSettings {
         title: "Shapes!".to_string(),
         ..Default::default()
@@ -354,17 +363,6 @@ pub fn demo_3d() {
                 * Mat4::from_angle_x(degrees(-90.0)),
         )
         .unwrap();
-    let mut plane = Gm::new(
-        Mesh::new(&context, &cpu_plane),
-        PhysicalMaterial::new_opaque(
-            &context,
-            &CpuMaterial {
-                albedo: Srgba::new_opaque(128, 200, 70),
-                ..Default::default()
-            },
-        ),
-    );
-    plane.material.render_states.cull = Cull::Back;
 
     let mut ambient = AmbientLight::new(&context, 0.2, Srgba::WHITE);
     let mut directional0 = DirectionalLight::new(
@@ -374,6 +372,12 @@ pub fn demo_3d() {
         vec3(0.0, -1.0, 0.0),
     );
     let mut directional1 = DirectionalLight::new(&context, 1.0, Srgba::WHITE, vec3(0.0, -1.0, 0.0));
+    let mut directional2 = DirectionalLight::new(
+        &context,
+        1.0,
+        Srgba::new_opaque(255, 192, 203),
+        vec3(0.0, -1.0, 0.0),
+    );
     let mut spot0 = SpotLight::new(
         &context,
         5.0,
@@ -412,27 +416,35 @@ pub fn demo_3d() {
 
     // let mut show_numbers = true;
 
-    let mut shadows_enabled = false;
-    let mut show_plane = false;
+    // let mut model: [(usize, usize); 12] = (0..12).map(|i| (i, 0)).collect_array().unwrap();
+    let mut puzzle_state: [i32; 60] = pentas
+        .iter()
+        .flat_map(|penta| *penta)
+        .collect_array()
+        .unwrap();
+
     let mut show_dodeca = false;
     let mut trans_factor = 0.02;
-    let mut facet_rot_speed = 10.0;
+    let mut facet_anim_speed = 10.0;
     let mut material_type = MaterialType::Forward;
 
     let mut time_d0 = 0.;
     let mut time_d1 = 0.;
+    let mut time_d2 = 0.;
     let mut time_s0 = 0.;
     // let mut time_p0 = 0.;
     // let mut time_p1 = 0.;
     let mut speed_d0 = 3;
     let mut speed_d1 = 3;
+    let mut speed_d2 = 3;
     let mut speed_s0 = 3;
     // let mut speed_p0 = 3;
     // let mut speed_p1 = 3;
 
     let mut picked_facet_id = None;
-    let mut pick_time = 0.;
+    let mut pick_away_time = 0.;
     let mut rotating = [0.0; 12];
+    let mut swapping = [None; 12];
 
     window.render_loop(move |mut frame_input| {
         let mut panel_width = 0.0;
@@ -453,21 +465,10 @@ pub fn demo_3d() {
                     // ui.add(Checkbox::new(&mut show_numbers, "Show numbers"));
 
                     ui.checkbox(&mut show_dodeca, "Show dodecahedron");
-                    if ui.checkbox(&mut show_plane, "Show plane").clicked() && !show_plane {
-                        shadows_enabled = false;
-                    }
-                    if ui
-                        .add_enabled(show_plane, Checkbox::new(&mut shadows_enabled, "Shadows"))
-                        .clicked()
-                        && !shadows_enabled
-                    {
-                        spot0.clear_shadow_map();
-                        directional0.clear_shadow_map();
-                        directional1.clear_shadow_map();
-                    }
                     ui.add(Slider::new(&mut trans_factor, -2.5..=2.5).text("Facet break out"));
                     ui.add(
-                        Slider::new(&mut facet_rot_speed, 1.0..=20.0).text("Facet rotation speed"),
+                        Slider::new(&mut facet_anim_speed, 1.0..=20.0)
+                            .text("Facet animation speed"),
                     );
 
                     ui.add(three_d::egui::Separator::default());
@@ -486,6 +487,11 @@ pub fn demo_3d() {
                             .text("Directional 1 intensity"),
                     );
                     ui.add(Slider::new(&mut speed_d1, 0..=10).text("Directional 1 speed"));
+                    ui.add(
+                        Slider::new(&mut directional2.intensity, 0.0..=1.0)
+                            .text("Directional 2 intensity"),
+                    );
+                    ui.add(Slider::new(&mut speed_d2, 0..=10).text("Directional 2 speed"));
                     ui.add(Slider::new(&mut spot0.intensity, 0.0..=10.0).text("Spot intensity"));
                     ui.add(Slider::new(&mut speed_s0, 0..=10).text("Spot speed"));
                     // ui.add(Slider::new(&mut point0.intensity, 0.0..=1.0).text("Point 0 intensity"));
@@ -512,7 +518,13 @@ pub fn demo_3d() {
         };
         camera.set_viewport(viewport);
 
+        let mut clicked_out = false;
         for event in frame_input.events.iter() {
+            if let Event::MouseRelease { .. } = *event {
+                if frame_input.accumulated_time - pick_away_time < 300. {
+                    picked_facet_id = None;
+                }
+            }
             if let Event::MousePress {
                 button, position, ..
             } = *event
@@ -522,49 +534,37 @@ pub fn demo_3d() {
                         match pick.geometry_id {
                             0 => {
                                 let new_id = pick.instance_id;
-                                let new_time = frame_input.accumulated_time;
-                                let delta = new_time - pick_time;
-                                let double_clicking = delta < 500.;
-                                picked_facet_id = match (picked_facet_id, double_clicking) {
-                                    (Some(id), false) if id == new_id => {
-                                        pick_time = new_time;
-                                        None
-                                    }
-                                    (Some(_), false) => {
-                                        pick_time = new_time;
-                                        Some(new_id)
-                                    }
-                                    (Some(id), true) if id == new_id => {
+                                picked_facet_id = match picked_facet_id {
+                                    Some(id) if id == new_id => {
                                         if rotating[id as usize] == 0. {
                                             rotating[id as usize] = 72.;
                                         }
-                                        pick_time = new_time;
                                         Some(id)
                                     }
-                                    (Some(_), true) => {
-                                        pick_time = new_time;
-                                        Some(new_id)
-                                    }
-                                    (None, false) => {
-                                        pick_time = new_time;
-                                        Some(new_id)
-                                    }
-                                    (None, true) => {
-                                        if rotating[new_id as usize] == 0. {
-                                            rotating[new_id as usize] = 72.;
+                                    Some(id) => {
+                                        if swapping[id as usize].is_none()
+                                            && swapping[new_id as usize].is_none()
+                                        {
+                                            swapping[new_id as usize] = Some((id, 0.));
+                                            swapping[id as usize] = Some((new_id, 0.));
                                         }
-                                        pick_time = new_time;
-                                        Some(new_id)
+                                        None
                                     }
+                                    None => Some(new_id),
                                 };
                             }
                             _ => {
                                 unreachable!()
                             }
                         };
+                    } else {
+                        clicked_out = true;
                     }
                 }
             }
+        }
+        if clicked_out {
+            pick_away_time = frame_input.accumulated_time;
         }
 
         control.handle_events(&mut camera, &mut frame_input.events);
@@ -577,6 +577,10 @@ pub fn demo_3d() {
         let c = time_d1.cos();
         let s = time_d1.sin();
         directional1.direction = vec3(1.0 + c, -1.0, -1.0 - s);
+        time_d2 += (speed_d2 * speed_d2) as f32 * 0.0001 * frame_input.elapsed_time as f32;
+        let c = time_d2.cos();
+        let s = time_d2.sin();
+        directional2.direction = vec3(-1.0 + c, 1.0, 1.0 - s);
         time_s0 += (speed_s0 * speed_s0) as f32 * 0.0001 * frame_input.elapsed_time as f32;
         let c = time_s0.cos();
         let s = time_s0.sin();
@@ -595,7 +599,7 @@ pub fn demo_3d() {
             (0..transformations_base.len())
                 .map(|i| {
                     if i == id as usize {
-                        Srgba::new_opaque(100, 100, 255)
+                        Srgba::new_opaque(100, 150, 255)
                     } else {
                         Srgba::WHITE
                     }
@@ -608,44 +612,98 @@ pub fn demo_3d() {
                 .enumerate()
                 .map(|(i, mat)| {
                     let rot = rotating[i];
-                    if rot != 0. {
+                    let rot_mat = if rot != 0. {
                         let next_rot = f32::max(
                             0.0,
-                            (rot - (7.2 * frame_input.elapsed_time as f32 * facet_rot_speed
+                            (rot - (7.2 * frame_input.elapsed_time as f32 * facet_anim_speed
                                 / 200.0))
                                 % 72.0,
                         );
-                        let mat = mat
-                            * Mat4::from_axis_angle(translation_base.normalize(), degrees(rot))
-                            * Mat4::from_translation(translation_base * trans_factor);
                         rotating[i] = next_rot;
-                        mat
+
+                        if next_rot == 0.0 {
+                            let offset = i * 5;
+                            for j in 0..4 {
+                                puzzle_state.swap(offset + j, (offset + j + 1) % (offset + 5));
+                            }
+                            // model[i].1 = (model[i].1 + 1) % 5;
+                            debug!(
+                                "state: {:?}",
+                                TRI_TO_FACETS
+                                    .iter()
+                                    .map(|&[a, b, c]| [
+                                        puzzle_state[a],
+                                        puzzle_state[b],
+                                        puzzle_state[c],
+                                        puzzle_state[a] + puzzle_state[b] + puzzle_state[c]
+                                    ])
+                                    .collect_vec()
+                            );
+                        }
+                        Mat4::from_axis_angle(translation_base.normalize(), degrees(rot))
                     } else {
-                        mat * Mat4::from_translation(translation_base * trans_factor)
-                    }
+                        Mat4::identity()
+                    };
+
+                    let mat = if let Some((o_id, prog)) = swapping[i] {
+                        let next_prog = f32::min(
+                            100.,
+                            prog + frame_input.elapsed_time as f32 * facet_anim_speed / 40.,
+                        );
+                        swapping[i] = if next_prog == 100. {
+                            if i > o_id as usize {
+                                let offset = i * 5;
+                                let o_offset = o_id as usize * 5;
+                                for j in 0..5 {
+                                    puzzle_state.swap(offset + j, o_offset + j);
+                                }
+                                // model.swap(i, o_id as usize);
+                                debug!(
+                                    "state: {:?}",
+                                    TRI_TO_FACETS
+                                        .iter()
+                                        .map(|&[a, b, c]| [
+                                            puzzle_state[a],
+                                            puzzle_state[b],
+                                            puzzle_state[c],
+                                            puzzle_state[a] + puzzle_state[b] + puzzle_state[c]
+                                        ])
+                                        .collect_vec()
+                                );
+                            }
+                            None
+                        } else {
+                            Some((o_id, next_prog))
+                        };
+
+                        interpolate3(
+                            &transformations_base[i],
+                            &transformations_base[o_id as usize],
+                            prog / 100.,
+                        )
+                    } else {
+                        *mat
+                    };
+
+                    mat * rot_mat * Mat4::from_translation(translation_base * trans_factor)
                 })
                 .collect_vec(),
             colors,
             ..Default::default()
         });
 
-        // Draw
-        if shadows_enabled {
-            if show_dodeca {
-                directional0.generate_shadow_map(1024, &dodeca);
-                directional1.generate_shadow_map(1024, &dodeca);
-                spot0.generate_shadow_map(1024, &dodeca);
-            }
-            directional0.generate_shadow_map(1024, &instanced_facets);
-            directional1.generate_shadow_map(1024, &instanced_facets);
-            spot0.generate_shadow_map(1024, &instanced_facets);
+        if win(&puzzle_state) {
+            // println!("youhou!");
         }
+
+        // Draw
 
         let lights = [
             &ambient as &dyn Light,
             &spot0,
             &directional0,
             &directional1,
+            &directional2,
             // &point0,
             // &point1,
         ];
@@ -723,19 +781,6 @@ pub fn demo_3d() {
 
         let screen = frame_input.screen();
         screen.clear(ClearState::default());
-        // frame_input
-        //     .screen()
-        //     .clear(ClearState::color_and_depth(0.8, 0.8, 0.8, 1.0, 1.0))
-        //     .render(
-        //         &camera,
-        //         // &ico,
-        //         // &dodeca,
-        //         ico.into_iter().chain(&dodeca),
-        //         &[&ambient, &directional, &light0, &light1],
-        //     );
-        // if show_numbers {
-        //     frame_input.screen().render(&camera, &numbers, &[]);
-        // }
 
         match material_type {
             MaterialType::Normal => {
@@ -753,13 +798,6 @@ pub fn demo_3d() {
                             &camera,
                             &lights,
                         );
-                        if show_plane {
-                            plane.render_with_material(
-                                &NormalMaterial::from_physical_material(&plane.material),
-                                &camera,
-                                &lights,
-                            );
-                        }
                         Ok(())
                     })
                     .unwrap();
@@ -779,13 +817,6 @@ pub fn demo_3d() {
                             &camera,
                             &lights,
                         );
-                        if show_plane {
-                            plane.render_with_material(
-                                &ColorMaterial::from_physical_material(&plane.material),
-                                &camera,
-                                &lights,
-                            );
-                        }
                         Ok(())
                     })
                     .unwrap();
@@ -797,9 +828,6 @@ pub fn demo_3d() {
                             dodeca.render(&camera, &lights);
                         }
                         instanced_facets.render(&camera, &lights);
-                        if show_plane {
-                            plane.render(&camera, &lights);
-                        }
                         Ok(())
                     })
                     .unwrap();
@@ -810,4 +838,11 @@ pub fn demo_3d() {
 
         FrameOutput::default()
     });
+}
+
+fn interpolate3(mat0: &Mat4, mat1: &Mat4, alpha: f32) -> Mat4 {
+    let mut mat = mat0 * (1. - alpha.sqrt()) + mat1 * alpha.sqrt();
+    let d = mat.determinant();
+    mat.w = Vec4::unit_w() * 1. / d;
+    mat
 }
