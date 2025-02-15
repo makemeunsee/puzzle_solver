@@ -16,7 +16,7 @@ See [the code](solvers/src/common.rs) for the full specs of the puzzle.
 
 ## Demo
 
-https://makemeunsee.github.io/puzzle_solver/  
+https://makemeunsee.github.io/puzzle_solver/original.html
 
 ## How to run
 
