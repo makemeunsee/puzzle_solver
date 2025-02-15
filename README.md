@@ -24,3 +24,9 @@ where `SEED` is a number, used to seed rnd.
 ```sh
 cargo run --release --bin svg
 ```
+
+## TODOs
+
+* [ ] fix click capture on web
+* [ ] facet swapping
+* [ ] triangle shines if correct

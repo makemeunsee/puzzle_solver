@@ -367,12 +367,17 @@ pub fn demo_3d() {
     plane.material.render_states.cull = Cull::Back;
 
     let mut ambient = AmbientLight::new(&context, 0.2, Srgba::WHITE);
-    let mut directional0 = DirectionalLight::new(&context, 1.0, Srgba::RED, vec3(0.0, -1.0, 0.0));
-    let mut directional1 = DirectionalLight::new(&context, 1.0, Srgba::GREEN, vec3(0.0, -1.0, 0.0));
+    let mut directional0 = DirectionalLight::new(
+        &context,
+        1.0,
+        Srgba::new_opaque(255, 150, 0),
+        vec3(0.0, -1.0, 0.0),
+    );
+    let mut directional1 = DirectionalLight::new(&context, 1.0, Srgba::WHITE, vec3(0.0, -1.0, 0.0));
     let mut spot0 = SpotLight::new(
         &context,
         5.0,
-        Srgba::BLUE,
+        Srgba::new_opaque(220, 200, 180),
         vec3(0.0, 0.0, 0.0),
         vec3(0.0, -1.0, 0.0),
         degrees(25.0),
@@ -382,28 +387,28 @@ pub fn demo_3d() {
             quadratic: 0.0001,
         },
     );
-    let mut point0 = PointLight::new(
-        &context,
-        1.0,
-        Srgba::GREEN,
-        vec3(0.0, 0.0, 0.0),
-        Attenuation {
-            constant: 0.5,
-            linear: 0.05,
-            quadratic: 0.005,
-        },
-    );
-    let mut point1 = PointLight::new(
-        &context,
-        1.0,
-        Srgba::RED,
-        vec3(0.0, 0.0, 0.0),
-        Attenuation {
-            constant: 0.5,
-            linear: 0.05,
-            quadratic: 0.005,
-        },
-    );
+    // let mut point0 = PointLight::new(
+    //     &context,
+    //     1.0,
+    //     Srgba::GREEN,
+    //     vec3(0.0, 0.0, 0.0),
+    //     Attenuation {
+    //         constant: 0.5,
+    //         linear: 0.05,
+    //         quadratic: 0.005,
+    //     },
+    // );
+    // let mut point1 = PointLight::new(
+    //     &context,
+    //     1.0,
+    //     Srgba::RED,
+    //     vec3(0.0, 0.0, 0.0),
+    //     Attenuation {
+    //         constant: 0.5,
+    //         linear: 0.05,
+    //         quadratic: 0.005,
+    //     },
+    // );
 
     // let mut show_numbers = true;
 
@@ -417,13 +422,13 @@ pub fn demo_3d() {
     let mut time_d0 = 0.;
     let mut time_d1 = 0.;
     let mut time_s0 = 0.;
-    let mut time_p0 = 0.;
-    let mut time_p1 = 0.;
+    // let mut time_p0 = 0.;
+    // let mut time_p1 = 0.;
     let mut speed_d0 = 3;
     let mut speed_d1 = 3;
     let mut speed_s0 = 3;
-    let mut speed_p0 = 3;
-    let mut speed_p1 = 3;
+    // let mut speed_p0 = 3;
+    // let mut speed_p1 = 3;
 
     let mut picked_facet_id = None;
     let mut pick_time = 0.;
@@ -483,10 +488,10 @@ pub fn demo_3d() {
                     ui.add(Slider::new(&mut speed_d1, 0..=10).text("Directional 1 speed"));
                     ui.add(Slider::new(&mut spot0.intensity, 0.0..=10.0).text("Spot intensity"));
                     ui.add(Slider::new(&mut speed_s0, 0..=10).text("Spot speed"));
-                    ui.add(Slider::new(&mut point0.intensity, 0.0..=1.0).text("Point 0 intensity"));
-                    ui.add(Slider::new(&mut speed_p0, 0..=10).text("Point 0 speed"));
-                    ui.add(Slider::new(&mut point1.intensity, 0.0..=1.0).text("Point 1 intensity"));
-                    ui.add(Slider::new(&mut speed_p1, 0..=10).text("Point 1 speed"));
+                    // ui.add(Slider::new(&mut point0.intensity, 0.0..=1.0).text("Point 0 intensity"));
+                    // ui.add(Slider::new(&mut speed_p0, 0..=10).text("Point 0 speed"));
+                    // ui.add(Slider::new(&mut point1.intensity, 0.0..=1.0).text("Point 1 intensity"));
+                    // ui.add(Slider::new(&mut speed_p1, 0..=10).text("Point 1 speed"));
 
                     ui.add(three_d::egui::Separator::default());
 
@@ -577,20 +582,20 @@ pub fn demo_3d() {
         let s = time_s0.sin();
         spot0.position = vec3(3.0 + c, 5.0 + s, 3.0 - s);
         spot0.direction = -vec3(3.0 + c, 5.0 + s, 3.0 - s);
-        time_p0 += (speed_p0 * speed_p0) as f32 * 0.0001 * frame_input.elapsed_time as f32;
-        let c = time_p0.cos();
-        let s = time_p0.sin();
-        point0.position = vec3(-5.0 * c, 5.0, -5.0 * s);
-        time_p1 += (speed_p1 * speed_p1) as f32 * 0.0001 * frame_input.elapsed_time as f32;
-        let c = time_p1.cos();
-        let s = time_p1.sin();
-        point1.position = vec3(5.0 * c, 5.0, 5.0 * s);
+        // time_p0 += (speed_p0 * speed_p0) as f32 * 0.0001 * frame_input.elapsed_time as f32;
+        // let c = time_p0.cos();
+        // let s = time_p0.sin();
+        // point0.position = vec3(-5.0 * c, 5.0, -5.0 * s);
+        // time_p1 += (speed_p1 * speed_p1) as f32 * 0.0001 * frame_input.elapsed_time as f32;
+        // let c = time_p1.cos();
+        // let s = time_p1.sin();
+        // point1.position = vec3(5.0 * c, 5.0, 5.0 * s);
 
         let colors = picked_facet_id.map(|id| {
             (0..transformations_base.len())
                 .map(|i| {
                     if i == id as usize {
-                        Srgba::GREEN
+                        Srgba::new_opaque(100, 100, 255)
                     } else {
                         Srgba::WHITE
                     }
@@ -641,8 +646,8 @@ pub fn demo_3d() {
             &spot0,
             &directional0,
             &directional1,
-            &point0,
-            &point1,
+            // &point0,
+            // &point1,
         ];
 
         // hide the numbers away, relevant ones are placed where needed later on
