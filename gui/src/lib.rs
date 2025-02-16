@@ -219,22 +219,6 @@ pub fn demo_3d(pentas: &[[i32; 5]; 12]) {
     let mut control = OrbitControl::new(camera.target(), 1.0, 50.0);
     let mut gui = three_d::GUI::new(&context);
 
-    let mut numbers = vec![];
-    let text_generator = TextGenerator::new(include_bytes!("OldEnglishFive.ttf"), 0, 2.).unwrap();
-    for i in 0..=65 {
-        let text_mesh =
-            text_generator.generate(&format!("{:0>2}", i + 1), TextLayoutOptions::default());
-        let mut text = Gm::new(
-            Mesh::new(&context, &text_mesh),
-            ColorMaterial {
-                color: Srgba::BLACK,
-                ..Default::default()
-            },
-        );
-        text.material.render_states.cull = Cull::Front;
-        numbers.push(text);
-    }
-
     // let mut pbox = Gm::new(
     //     Mesh::new(&context, &CpuMesh::cube()),
     //     PhysicalMaterial::new(&context, &CpuMaterial::default()),
@@ -355,14 +339,59 @@ pub fn demo_3d(pentas: &[[i32; 5]; 12]) {
     );
     instanced_facets.material.render_states.cull = Cull::Back;
 
-    let mut cpu_plane = CpuMesh::square();
-    cpu_plane
-        .transform(
-            Mat4::from_translation(vec3(0.0, -GOLD, 0.0))
-                * Mat4::from_scale(10.0)
-                * Mat4::from_angle_x(degrees(-90.0)),
-        )
-        .unwrap();
+    let smaller = Mat4::from_scale(0.1);
+    let facet_align =
+        Mat4::from_axis_angle(Vec3::unit_x(), degrees(-69.1)) * Mat4::from_angle_z(degrees(180.));
+    let facet_center =
+        (Polyhedron::ico_facet().positions[0] + Polyhedron::ico_facet().positions[1]) / 2.;
+    let facet_translate = Mat4::from_translation(facet_center * 1.001);
+
+    let mut numbers = vec![];
+    let text_generator = TextGenerator::new(include_bytes!("OldEnglishFive.ttf"), 0, 2.5).unwrap();
+    for (i, penta) in pentas.iter().enumerate() {
+        for (j, v) in penta.iter().enumerate() {
+            let text_mesh =
+                text_generator.generate(&format!("{:0>2}", v), TextLayoutOptions::default());
+            let (x_min, x_max, y_min, y_max, z_min, z_max) = text_mesh
+                .positions
+                .to_f32()
+                .iter()
+                .fold((1000., 0., 1000., 0., 1000., 0.), |mut acc, p| {
+                    acc.0 = f32::min(acc.0, p.x);
+                    acc.1 = f32::max(acc.1, p.x);
+                    acc.2 = f32::min(acc.2, p.y);
+                    acc.3 = f32::max(acc.3, p.y);
+                    acc.4 = f32::min(acc.4, p.z);
+                    acc.5 = f32::max(acc.5, p.z);
+                    acc
+                });
+            let to_origin = Mat4::from_translation(Vec3::new(
+                -(x_min + x_max) / 2.,
+                -(y_min + y_max) / 2.,
+                -(z_min + z_max) / 2.,
+            ));
+            let mut text = Gm::new(
+                Mesh::new(&context, &text_mesh),
+                ColorMaterial {
+                    color: Srgba::BLACK,
+                    ..Default::default()
+                },
+            );
+            text.material.render_states.cull = Cull::Front;
+            text.set_transformation(
+                transformations_base[i]
+                    * Mat4::from_axis_angle(
+                        Polyhedron::ico_facet().positions[0].normalize(),
+                        degrees(j as f32 * 72.),
+                    )
+                    * facet_translate
+                    * facet_align
+                    * smaller
+                    * to_origin,
+            );
+            numbers.push((text, facet_translate * facet_align * smaller * to_origin));
+        }
+    }
 
     let mut ambient = AmbientLight::new(&context, 0.2, Srgba::WHITE);
     let mut directional0 = DirectionalLight::new(
@@ -424,7 +453,7 @@ pub fn demo_3d(pentas: &[[i32; 5]; 12]) {
         .unwrap();
 
     let mut show_dodeca = false;
-    let mut trans_factor = 0.02;
+    let mut trans_factor = 0.0;
     let mut facet_anim_speed = 10.0;
     let mut material_type = MaterialType::Forward;
 
@@ -828,6 +857,9 @@ pub fn demo_3d(pentas: &[[i32; 5]; 12]) {
                             dodeca.render(&camera, &lights);
                         }
                         instanced_facets.render(&camera, &lights);
+                        for number in &numbers {
+                            number.0.render(&camera, &[]);
+                        }
                         Ok(())
                     })
                     .unwrap();
