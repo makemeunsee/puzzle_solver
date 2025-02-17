@@ -29,7 +29,18 @@ cargo run --release --bin svg
 
 * [ ] fix click capture on web
 * [x] facet swapping
-* [ ] numbers follow facets
-* [ ] triangle shines if correct
-* [ ] better font
-* [ ] mark top, bottom too? background?
+* [x] numbers follow facets
+* [x] triangle shines if correct
+* [x] better font
+* [ ] swap anim
+* [ ] unmoveable facet
+* [ ] cheat mode: no swap
+* [ ] easy mode: no swap, no highlight
+* [ ] hard mode: no highlight
+* [ ] impossible mode: 13rd facet
+* [ ] random puzzle button
+* [ ] seed input, +check has unique sol
+* [ ] win animation (breaking/fading out, game controls locked, reveal dodeca?)
+* [ ] estimate difficulty vs puzzle100
+* [ ] perf issues?
+* [x] darker facet back / shadows again?

@@ -45,6 +45,13 @@ fn main() {
     // let sols = pentas_on_ico(&pentas);
     // println!("{:?}", sols);
 
+    // debug values
+    // let pentas = (0..60)
+    //     .chunks(5)
+    //     .into_iter()
+    //     .map(|x| x.collect_array().unwrap())
+    //     .collect_array()
+    //     .unwrap();
     gui::demo_3d(&pentas);
 }
 
@@ -101,8 +108,8 @@ fn generate_one(triplets: &[(i32, i32, i32); 20], seed: u64) -> [[i32; 5]; 12] {
         .collect_array()
         .unwrap();
     info!("pentas shuffled:\n{:?}", pentas_shuffled);
-    // pentas_shuffled
-    pentas
+    pentas_shuffled
+    // pentas
 }
 
 // given N>=12 pentas of 5 facets, try to place them on the vertices of an icosahedron.
