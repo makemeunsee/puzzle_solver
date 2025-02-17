@@ -67,26 +67,26 @@ impl Polyhedron {
         let triangle_center_0 =
             (ICOSAHEDRON_VERTICES[0] + ICOSAHEDRON_VERTICES[1] + ICOSAHEDRON_VERTICES[2]) / 3.;
         let triangle_center_1 =
-            (ICOSAHEDRON_VERTICES[8] + ICOSAHEDRON_VERTICES[1] + ICOSAHEDRON_VERTICES[2]) / 3.;
+            (ICOSAHEDRON_VERTICES[0] + ICOSAHEDRON_VERTICES[6] + ICOSAHEDRON_VERTICES[2]) / 3.;
         let triangle_center_2 =
-            (ICOSAHEDRON_VERTICES[8] + ICOSAHEDRON_VERTICES[5] + ICOSAHEDRON_VERTICES[2]) / 3.;
+            (ICOSAHEDRON_VERTICES[0] + ICOSAHEDRON_VERTICES[6] + ICOSAHEDRON_VERTICES[3]) / 3.;
         let triangle_center_3 =
-            (ICOSAHEDRON_VERTICES[6] + ICOSAHEDRON_VERTICES[5] + ICOSAHEDRON_VERTICES[2]) / 3.;
+            (ICOSAHEDRON_VERTICES[0] + ICOSAHEDRON_VERTICES[7] + ICOSAHEDRON_VERTICES[3]) / 3.;
         let triangle_center_4 =
-            (ICOSAHEDRON_VERTICES[6] + ICOSAHEDRON_VERTICES[0] + ICOSAHEDRON_VERTICES[2]) / 3.;
+            (ICOSAHEDRON_VERTICES[0] + ICOSAHEDRON_VERTICES[7] + ICOSAHEDRON_VERTICES[1]) / 3.;
 
         let vertices = [
-            ICOSAHEDRON_VERTICES[2],
+            ICOSAHEDRON_VERTICES[0],
             triangle_center_0,
-            (ICOSAHEDRON_VERTICES[1] + ICOSAHEDRON_VERTICES[2]) / 2.,
-            triangle_center_1,
-            (ICOSAHEDRON_VERTICES[8] + ICOSAHEDRON_VERTICES[2]) / 2.,
-            triangle_center_2,
-            (ICOSAHEDRON_VERTICES[5] + ICOSAHEDRON_VERTICES[2]) / 2.,
-            triangle_center_3,
-            (ICOSAHEDRON_VERTICES[6] + ICOSAHEDRON_VERTICES[2]) / 2.,
-            triangle_center_4,
             (ICOSAHEDRON_VERTICES[0] + ICOSAHEDRON_VERTICES[2]) / 2.,
+            triangle_center_1,
+            (ICOSAHEDRON_VERTICES[0] + ICOSAHEDRON_VERTICES[6]) / 2.,
+            triangle_center_2,
+            (ICOSAHEDRON_VERTICES[0] + ICOSAHEDRON_VERTICES[3]) / 2.,
+            triangle_center_3,
+            (ICOSAHEDRON_VERTICES[0] + ICOSAHEDRON_VERTICES[7]) / 2.,
+            triangle_center_4,
+            (ICOSAHEDRON_VERTICES[0] + ICOSAHEDRON_VERTICES[1]) / 2.,
         ];
 
         let ideal_indices = [
@@ -239,12 +239,12 @@ pub fn demo_3d(pentas: &[[i32; 5]; 12]) {
             b: 80,
             a: 255,
         },
-        // emissive: Srgba {
-        //     r: 20,
-        //     g: 20,
-        //     b: 0,
-        //     a: 255,
-        // },
+        emissive: Srgba {
+            r: 5,
+            g: 5,
+            b: 0,
+            a: 255,
+        },
         metallic: 0.8,
         roughness: 0.3,
         ..Default::default()
@@ -254,24 +254,6 @@ pub fn demo_3d(pentas: &[[i32; 5]; 12]) {
         PhysicalMaterial::new(&context, &dodeca_mat),
     );
     dodeca.material.render_states.cull = Cull::Back;
-
-    // let ico_mesh = Polyhedron::regular_isocahedron().into_mesh();
-    // let ico_mat = CpuMaterial {
-    //     albedo: Srgba {
-    //         r: 80,
-    //         g: 240,
-    //         b: 160,
-    //         a: 255,
-    //     },
-    //     metallic: 0.8,
-    //     roughness: 0.3,
-    //     ..Default::default()
-    // };
-    // let mut ico = Gm::new(
-    //     Mesh::new(&context, &ico_mesh),
-    //     PhysicalMaterial::new(&context, &ico_mat),
-    // );
-    // ico.material.render_states.cull = Cull::Back;
 
     let facet_mesh = Polyhedron::ico_facet().into_mesh();
 
@@ -293,38 +275,37 @@ pub fn demo_3d(pentas: &[[i32; 5]; 12]) {
         0.,
         1.,
     );
-    let magic_rot_b = magic_rot_a
-        * Mat4::new(
-            (1. - GOLD) / 2.,
-            GOLD / 2.,
-            -0.5,
-            0.,
-            -GOLD / 2.,
-            -0.5,
-            (1. - GOLD) / 2.,
-            0.,
-            -0.5,
-            (GOLD - 1.) / 2.,
-            GOLD / 2.,
-            0.,
-            0.,
-            0.,
-            0.,
-            1.,
-        );
+    let magic_rot_b = Mat4::new(
+        (1. - GOLD) / 2.,
+        GOLD / 2.,
+        -0.5,
+        0.,
+        -GOLD / 2.,
+        -0.5,
+        (1. - GOLD) / 2.,
+        0.,
+        -0.5,
+        (GOLD - 1.) / 2.,
+        GOLD / 2.,
+        0.,
+        0.,
+        0.,
+        0.,
+        1.,
+    );
     let transformations_base = vec![
-        Mat4::identity(),
-        Mat4::from_angle_y(degrees(180.)),
-        Mat4::from_angle_x(degrees(180.)),
-        Mat4::from_angle_y(degrees(180.)) * Mat4::from_angle_x(degrees(180.)),
-        magic_rot_a,
-        Mat4::from_angle_y(degrees(180.)) * magic_rot_a,
-        Mat4::from_angle_x(degrees(180.)) * magic_rot_a,
-        Mat4::from_angle_y(degrees(180.)) * Mat4::from_angle_x(degrees(180.)) * magic_rot_a,
-        magic_rot_b,
-        Mat4::from_angle_y(degrees(180.)) * magic_rot_b,
-        Mat4::from_angle_x(degrees(180.)) * magic_rot_b,
-        Mat4::from_angle_y(degrees(180.)) * Mat4::from_angle_x(degrees(180.)) * magic_rot_b,
+        Mat4::identity(),                                              // D0
+        Mat4::from_angle_y(degrees(180.)),                             // D1
+        Mat4::from_angle_x(degrees(180.)) * magic_rot_a * magic_rot_b, // D2
+        Mat4::from_angle_z(degrees(180.)) * magic_rot_b,               // D3
+        magic_rot_b,                                                   // D4
+        Mat4::from_angle_y(degrees(180.)) * magic_rot_a * magic_rot_b, // D5
+        Mat4::from_angle_y(degrees(180.)) * magic_rot_b,               // D6
+        Mat4::from_angle_z(degrees(180.)) * magic_rot_a * magic_rot_b, // D7
+        Mat4::from_angle_x(degrees(180.)) * magic_rot_b,               // D8
+        magic_rot_a * magic_rot_b,                                     // D9
+        Mat4::from_angle_z(degrees(180.)),                             // D10
+        Mat4::from_angle_x(degrees(180.)),                             // D11
     ];
     let translation_base = Polyhedron::ico_facet().positions[0];
 
@@ -341,13 +322,14 @@ pub fn demo_3d(pentas: &[[i32; 5]; 12]) {
 
     let smaller = Mat4::from_scale(0.1);
     let facet_align =
-        Mat4::from_axis_angle(Vec3::unit_x(), degrees(-69.1)) * Mat4::from_angle_z(degrees(180.));
-    let facet_center =
-        (Polyhedron::ico_facet().positions[0] + Polyhedron::ico_facet().positions[1]) / 2.;
+        Mat4::from_axis_angle(Vec3::unit_x(), degrees(-69.1)) * Mat4::from_angle_z(degrees(-60.));
+    let facet_center = (1. * Polyhedron::ico_facet().positions[0]
+        + 2. * Polyhedron::ico_facet().positions[1])
+        / 3.;
     let facet_translate = Mat4::from_translation(facet_center * 1.001);
 
     let mut numbers = vec![];
-    let text_generator = TextGenerator::new(include_bytes!("OldEnglishFive.ttf"), 0, 2.5).unwrap();
+    let text_generator = TextGenerator::new(include_bytes!("OldEnglishFive.ttf"), 0, 3.).unwrap();
     for (i, penta) in pentas.iter().enumerate() {
         for (j, v) in penta.iter().enumerate() {
             let text_mesh =
@@ -378,18 +360,28 @@ pub fn demo_3d(pentas: &[[i32; 5]; 12]) {
                 },
             );
             text.material.render_states.cull = Cull::Front;
-            text.set_transformation(
-                transformations_base[i]
-                    * Mat4::from_axis_angle(
-                        Polyhedron::ico_facet().positions[0].normalize(),
-                        degrees(j as f32 * 72.),
-                    )
-                    * facet_translate
-                    * facet_align
-                    * smaller
-                    * to_origin,
-            );
-            numbers.push((text, facet_translate * facet_align * smaller * to_origin));
+            // facets are visually rotated
+            // by the `transformations_base`
+            let rot_shift = match i {
+                1 => 1,
+                4 => -2,
+                5 => 2,
+                6 => -2,
+                8 => 1,
+                9 => 2,
+                10 => -2,
+                11 => -2,
+                _ => 0,
+            };
+            let text_mat = Mat4::from_axis_angle(
+                Polyhedron::ico_facet().positions[0].normalize(),
+                degrees((rot_shift + j as i32) as f32 * -72.),
+            ) * facet_translate
+                * facet_align
+                * smaller
+                * to_origin;
+            text.set_transformation(transformations_base[i] * text_mat);
+            numbers.push((text, text_mat));
         }
     }
 
@@ -443,9 +435,6 @@ pub fn demo_3d(pentas: &[[i32; 5]; 12]) {
     //     },
     // );
 
-    // let mut show_numbers = true;
-
-    // let mut model: [(usize, usize); 12] = (0..12).map(|i| (i, 0)).collect_array().unwrap();
     let mut puzzle_state: [i32; 60] = pentas
         .iter()
         .flat_map(|penta| *penta)
@@ -463,10 +452,10 @@ pub fn demo_3d(pentas: &[[i32; 5]; 12]) {
     let mut time_s0 = 0.;
     // let mut time_p0 = 0.;
     // let mut time_p1 = 0.;
-    let mut speed_d0 = 3;
-    let mut speed_d1 = 3;
-    let mut speed_d2 = 3;
-    let mut speed_s0 = 3;
+    let mut speed_d0 = 0;
+    let mut speed_d1 = 0;
+    let mut speed_d2 = 0;
+    let mut speed_s0 = 0;
     // let mut speed_p0 = 3;
     // let mut speed_p1 = 3;
 
@@ -474,6 +463,8 @@ pub fn demo_3d(pentas: &[[i32; 5]; 12]) {
     let mut pick_away_time = 0.;
     let mut rotating = [0.0; 12];
     let mut swapping = [None; 12];
+
+    let pentas = *pentas;
 
     window.render_loop(move |mut frame_input| {
         let mut panel_width = 0.0;
@@ -490,8 +481,6 @@ pub fn demo_3d(pentas: &[[i32; 5]; 12]) {
                     ui.heading("Control Panel");
 
                     ui.add(three_d::egui::Separator::default());
-
-                    // ui.add(Checkbox::new(&mut show_numbers, "Show numbers"));
 
                     ui.checkbox(&mut show_dodeca, "Show dodecahedron");
                     ui.add(Slider::new(&mut trans_factor, -2.5..=2.5).text("Facet break out"));
@@ -551,9 +540,15 @@ pub fn demo_3d(pentas: &[[i32; 5]; 12]) {
         for event in frame_input.events.iter() {
             if let Event::MouseRelease { .. } = *event {
                 if frame_input.accumulated_time - pick_away_time < 300. {
+                    if let Some(id) = picked_facet_id {
+                        for num in numbers.iter_mut().skip(id as usize * 5).take(5) {
+                            num.0.material.color = Srgba::BLACK;
+                        }
+                    }
                     picked_facet_id = None;
                 }
             }
+
             if let Event::MousePress {
                 button, position, ..
             } = *event
@@ -570,6 +565,7 @@ pub fn demo_3d(pentas: &[[i32; 5]; 12]) {
                                         }
                                         Some(id)
                                     }
+
                                     Some(id) => {
                                         if swapping[id as usize].is_none()
                                             && swapping[new_id as usize].is_none()
@@ -577,8 +573,16 @@ pub fn demo_3d(pentas: &[[i32; 5]; 12]) {
                                             swapping[new_id as usize] = Some((id, 0.));
                                             swapping[id as usize] = Some((new_id, 0.));
                                         }
+                                        if let Some(id) = picked_facet_id {
+                                            for num in
+                                                numbers.iter_mut().skip(id as usize * 5).take(5)
+                                            {
+                                                num.0.material.color = Srgba::BLACK;
+                                            }
+                                        }
                                         None
                                     }
+
                                     None => Some(new_id),
                                 };
                             }
@@ -628,6 +632,9 @@ pub fn demo_3d(pentas: &[[i32; 5]; 12]) {
             (0..transformations_base.len())
                 .map(|i| {
                     if i == id as usize {
+                        for num in numbers.iter_mut().skip(i * 5).take(5) {
+                            num.0.material.color = Srgba::new_opaque(100, 255, 100);
+                        }
                         Srgba::new_opaque(100, 150, 255)
                     } else {
                         Srgba::WHITE
@@ -655,19 +662,6 @@ pub fn demo_3d(pentas: &[[i32; 5]; 12]) {
                             for j in 0..4 {
                                 puzzle_state.swap(offset + j, (offset + j + 1) % (offset + 5));
                             }
-                            // model[i].1 = (model[i].1 + 1) % 5;
-                            debug!(
-                                "state: {:?}",
-                                TRI_TO_FACETS
-                                    .iter()
-                                    .map(|&[a, b, c]| [
-                                        puzzle_state[a],
-                                        puzzle_state[b],
-                                        puzzle_state[c],
-                                        puzzle_state[a] + puzzle_state[b] + puzzle_state[c]
-                                    ])
-                                    .collect_vec()
-                            );
                         }
                         Mat4::from_axis_angle(translation_base.normalize(), degrees(rot))
                     } else {
@@ -686,19 +680,6 @@ pub fn demo_3d(pentas: &[[i32; 5]; 12]) {
                                 for j in 0..5 {
                                     puzzle_state.swap(offset + j, o_offset + j);
                                 }
-                                // model.swap(i, o_id as usize);
-                                debug!(
-                                    "state: {:?}",
-                                    TRI_TO_FACETS
-                                        .iter()
-                                        .map(|&[a, b, c]| [
-                                            puzzle_state[a],
-                                            puzzle_state[b],
-                                            puzzle_state[c],
-                                            puzzle_state[a] + puzzle_state[b] + puzzle_state[c]
-                                        ])
-                                        .collect_vec()
-                                );
                             }
                             None
                         } else {
@@ -736,77 +717,6 @@ pub fn demo_3d(pentas: &[[i32; 5]; 12]) {
             // &point0,
             // &point1,
         ];
-
-        // hide the numbers away, relevant ones are placed where needed later on
-        // for mesh in &mut numbers {
-        //     mesh.set_transformation(Mat4::from_translation(vec3(0., -1000., -1000.)));
-        // }
-
-        // // used to roughly center the number on the face; measured, varies with font size
-        // const TEXT_HALF_WIDTH: f32 = 1.3;
-        // const TEXT_HALF_HEIGHT: f32 = 0.9;
-        // // so the numbers are an epsilon in front of the face and visible
-        // const EPS: f32 = 0.01;
-
-        // if show_numbers {
-        //     for face in &b.0.faces {
-        //         let mesh = &mut numbers[face.value as usize - 1];
-        //         let trans = match face.dir {
-        //             Dir::Back => {
-        //                 Mat4::from_translation(vec3(
-        //                     x + h + TEXT_HALF_WIDTH,
-        //                     y + w + TEXT_HALF_HEIGHT,
-        //                     z + 2. * d + EPS,
-        //                 ))
-        //                 * Mat4::from_angle_z(Deg(180.))
-        //             }
-        //             Dir::Front => {
-        //                 Mat4::from_translation(vec3(
-        //                     x + h + TEXT_HALF_WIDTH,
-        //                     y + w - TEXT_HALF_HEIGHT,
-        //                     z - EPS,
-        //                 ))
-        //                 * Mat4::from_angle_y(Deg(180.))
-        //             }
-        //             Dir::Right => {
-        //                 Mat4::from_translation(vec3(
-        //                     x + h + TEXT_HALF_WIDTH,
-        //                     y + 2. * w + EPS,
-        //                     z + d - TEXT_HALF_HEIGHT,
-        //                 ))
-        //                 * Mat4::from_angle_x(Deg(-90.))
-        //                 * Mat4::from_angle_z(Deg(180.))
-        //             }
-        //             Dir::Left => {
-        //                 Mat4::from_translation(vec3(
-        //                     x + h - TEXT_HALF_WIDTH,
-        //                     y - EPS,
-        //                     z + d - TEXT_HALF_HEIGHT,
-        //                 ))
-        //                 * Mat4::from_angle_x(Deg(90.))
-        //             }
-        //             Dir::Top => {
-        //                 Mat4::from_translation(vec3(
-        //                     x + 2. * h + EPS,
-        //                     y + w - TEXT_HALF_WIDTH,
-        //                     z + d - TEXT_HALF_HEIGHT,
-        //                 ))
-        //                 * Mat4::from_angle_y(Deg(90.))
-        //                 * Mat4::from_angle_z(Deg(90.))
-        //             }
-        //             Dir::Bottom => {
-        //                 Mat4::from_translation(vec3(
-        //                     x - EPS,
-        //                     y + w + TEXT_HALF_WIDTH,
-        //                     z + d - TEXT_HALF_HEIGHT,
-        //                 ))
-        //                 * Mat4::from_angle_y(Deg(-90.))
-        //                 * Mat4::from_angle_z(Deg(-90.))
-        //             }
-        //         };
-        //         mesh.set_transformation(trans);
-        //     }
-        // }
 
         let screen = frame_input.screen();
         screen.clear(ClearState::default());

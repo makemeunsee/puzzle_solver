@@ -28,5 +28,8 @@ cargo run --release --bin svg
 ## TODOs
 
 * [ ] fix click capture on web
-* [ ] facet swapping
+* [x] facet swapping
+* [ ] numbers follow facets
 * [ ] triangle shines if correct
+* [ ] better font
+* [ ] mark top, bottom too? background?
