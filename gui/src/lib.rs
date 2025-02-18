@@ -209,12 +209,17 @@ const COLOR_LIGHT_BLUE: Srgba = Srgba::new_opaque(100, 150, 255);
 const COLOR_LIGHT_GOLD: Srgba = Srgba::new_opaque(220, 220, 150);
 const COLOR_NEON_GREEN: Srgba = Srgba::new_opaque(100, 255, 100);
 const COLOR_FIERY_RED: Srgba = Srgba::new_opaque(255, 50, 0);
+const COLOR_GOLD: Srgba = Srgba::new_opaque(240, 160, 80);
+const COLOR_GRAY_BROWN: Srgba = Srgba::new_opaque(94, 94, 80);
 
-const COLOR_FACET_BASE: Srgba = Srgba::WHITE;
-const COLOR_FACET_PICK: Srgba = COLOR_LIGHT_BLUE;
+const COLOR_FACET_0: Srgba = Srgba::new_opaque(150, 90, 0);
+const COLOR_FACET_BASE: Srgba = COLOR_GOLD;
+const COLOR_FACET_PICK: Srgba = COLOR_GRAY_BROWN;
 const COLOR_TEXT_PICK: Srgba = COLOR_NEON_GREEN;
 const COLOR_TEXT_GOOD: Srgba = COLOR_LIGHT_GOLD;
 const COLOR_TEXT_BAD: Srgba = Srgba::BLACK;
+
+const STATIC_FACET_ID: usize = 11;
 
 pub fn demo_3d(pentas: &[[i32; 5]; 12]) {
     let window = Window::new(WindowSettings {
@@ -237,12 +242,7 @@ pub fn demo_3d(pentas: &[[i32; 5]; 12]) {
 
     let dodeca_mesh = Polyhedron::regular_dodecahedron().into_mesh();
     let dodeca_mat = CpuMaterial {
-        albedo: Srgba {
-            r: 240,
-            g: 160,
-            b: 80,
-            a: 255,
-        },
+        albedo: Srgba::WHITE,
         emissive: Srgba {
             r: 5,
             g: 5,
@@ -431,10 +431,11 @@ pub fn demo_3d(pentas: &[[i32; 5]; 12]) {
 
     let mut picked_facet_id = None;
     let mut rotating = [None; 12];
-    // let mut swapping = [None; 12];
+    let mut swapping = None;
     let mut pressed_on = None;
 
     let mut facet_colors = vec![COLOR_FACET_BASE; transformations_base.len()];
+    facet_colors[STATIC_FACET_ID] = COLOR_FACET_0;
     let mut change = true;
 
     window.render_loop(move |mut frame_input| {
@@ -537,14 +538,14 @@ pub fn demo_3d(pentas: &[[i32; 5]; 12]) {
                     if !moved {
                         if let Some(pick) = pick(&context, &camera, position, &instanced_facets) {
                             match pick.geometry_id {
-                                0 => pick_id = Some(pick.instance_id),
+                                0 => pick_id = Some(pick.instance_id as usize),
                                 _ => unreachable!(),
                             };
                         } else {
                             // picked out -> unpick current
                             if let Some(id) = picked_facet_id {
                                 picked_facet_id = None;
-                                facet_colors[id as usize] = COLOR_FACET_BASE;
+                                facet_colors[id] = COLOR_FACET_BASE;
                                 change = true;
                             }
                         }
@@ -555,51 +556,32 @@ pub fn demo_3d(pentas: &[[i32; 5]; 12]) {
 
         // a geometry was picked
         if let Some(pick_id) = pick_id {
-            picked_facet_id = match picked_facet_id {
-                // picked the same facet -> rotate it
-                Some(id) if id == pick_id => {
-                    let i = id as usize;
-                    if rotating[i].is_none() {
-                        rotating[i] = Some(0.);
+            if pick_id != STATIC_FACET_ID {
+                picked_facet_id = match picked_facet_id {
+                    // picked the same facet -> rotate it
+                    Some(id) if id == pick_id => {
+                        if (rotating[id] as Option<f32>).is_none() {
+                            rotating[id] = Some(0.);
+                        }
+                        Some(id)
                     }
-                    Some(id)
-                }
 
-                // picked the another facet -> swap them
-                Some(id) => {
-                    // unpick_number_color(&picked_facet_id, &mut numbers);
-                    // if swapping[id as usize].is_none() && swapping[new_id as usize].is_none() {
-                    //     swapping[new_id as usize] = Some((id, 0.));
-                    //     swapping[id as usize] = Some((new_id, 0.));
-                    // }
-                    // None
-                    let offset = id as usize * 5;
-                    let o_offset = pick_id as usize * 5;
-                    for j in 0..5 {
-                        let offset0 = offset + j;
-                        let offset1 = o_offset + j;
-                        puzzle_state.swap(offset0, offset1);
-                        numbers.swap(offset0, offset1);
-                        let tmp = numbers[offset0].1;
-                        numbers[offset0].1 = numbers[offset1].1;
-                        numbers[offset1].1 = tmp;
-                        let tmp = numbers[offset0].2;
-                        numbers[offset0].2 = numbers[offset1].2;
-                        numbers[offset1].2 = tmp;
+                    // picked the another facet -> swap them
+                    Some(id) => {
+                        if swapping.is_none() {
+                            swapping = Some((id, pick_id, 0.));
+                            change = true;
+                        }
+                        Some(id)
                     }
-                    change = true;
-                    // TODO ideally, move the coloring logic out
-                    facet_colors[id as usize] = COLOR_FACET_BASE;
-                    facet_colors[pick_id as usize] = COLOR_FACET_PICK;
-                    Some(pick_id)
-                }
 
-                // picked a new facet
-                None => {
-                    change = true;
-                    Some(pick_id)
-                }
-            };
+                    // picked a new facet
+                    None => {
+                        change = true;
+                        Some(pick_id)
+                    }
+                };
+            }
         }
 
         // animate the rotations
@@ -635,6 +617,37 @@ pub fn demo_3d(pentas: &[[i32; 5]; 12]) {
             }
         }
 
+        // animate the swapping
+        if let Some((picked_id, o_id, prog)) = swapping {
+            let next_prog = f32::min(
+                100.,
+                prog + frame_input.elapsed_time as f32 * facet_anim_speed / 40.,
+            );
+            if next_prog >= 50. && prog < 50. {
+                let offset = picked_id * 5;
+                let o_offset = o_id * 5;
+                for j in 0..5 {
+                    let offset0 = offset + j;
+                    let offset1 = o_offset + j;
+                    puzzle_state.swap(offset0, offset1);
+                    numbers.swap(offset0, offset1);
+                    let tmp = numbers[offset0].1;
+                    numbers[offset0].1 = numbers[offset1].1;
+                    numbers[offset1].1 = tmp;
+                    let tmp = numbers[offset0].2;
+                    numbers[offset0].2 = numbers[offset1].2;
+                    numbers[offset1].2 = tmp;
+                }
+                swapping = Some((o_id, picked_id, next_prog));
+                picked_facet_id = Some(o_id);
+                change = true;
+            } else if next_prog == 100. {
+                swapping = None;
+            } else {
+                swapping = Some((picked_id, o_id, next_prog));
+            }
+        }
+
         if change {
             let mut win = true;
             for [a, b, c] in TRI_TO_FACETS {
@@ -650,14 +663,17 @@ pub fn demo_3d(pentas: &[[i32; 5]; 12]) {
                     numbers[c].0.material.color = COLOR_TEXT_GOOD;
                 }
             }
+            if let Some((_, o_id, _)) = swapping {
+                facet_colors[o_id] = COLOR_FACET_BASE;
+            }
+            if let Some(id) = picked_facet_id {
+                pick_number_color(id, &mut numbers);
+                facet_colors[id] = COLOR_FACET_PICK;
+            }
             if win {
                 // TODO
             }
             change = false;
-            if let Some(id) = picked_facet_id {
-                pick_number_color(id, &mut numbers);
-                facet_colors[id as usize] = COLOR_FACET_PICK;
-            }
         }
 
         control.handle_events(&mut camera, &mut frame_input.events);
@@ -679,14 +695,6 @@ pub fn demo_3d(pentas: &[[i32; 5]; 12]) {
         let s = time_s0.sin();
         spot0.position = vec3(3.0 + c, 5.0 + s, 3.0 - s);
         spot0.direction = -vec3(3.0 + c, 5.0 + s, 3.0 - s);
-        // time_p0 += (speed_p0 * speed_p0) as f32 * 0.0001 * frame_input.elapsed_time as f32;
-        // let c = time_p0.cos();
-        // let s = time_p0.sin();
-        // point0.position = vec3(-5.0 * c, 5.0, -5.0 * s);
-        // time_p1 += (speed_p1 * speed_p1) as f32 * 0.0001 * frame_input.elapsed_time as f32;
-        // let c = time_p1.cos();
-        // let s = time_p1.sin();
-        // point1.position = vec3(5.0 * c, 5.0, 5.0 * s);
 
         let transformations = transformations_base
             .iter()
@@ -698,25 +706,19 @@ pub fn demo_3d(pentas: &[[i32; 5]; 12]) {
                     Mat4::identity()
                 };
 
-                // let mat = if let Some((o_id, prog)) = swapping[i] {
-                //     let next_prog = f32::min(
-                //         100.,
-                //         prog + frame_input.elapsed_time as f32 * facet_anim_speed / 40.,
-                //     );
-                //     swapping[i] = if next_prog == 100. {
-                //         None
-                //     } else {
-                //         Some((o_id, next_prog))
-                //     };
-
-                //     interpolate3(
-                //         &transformations_base[i],
-                //         &transformations_base[o_id as usize],
-                //         prog / 100.,
-                //     )
-                // } else {
-                //     *mat
-                // };
+                let trans_factor = trans_factor
+                    + match swapping {
+                        Some((id, o_id, prog)) if i == id || i == o_id => {
+                            if prog < 25. {
+                                0.005 * prog
+                            } else if prog > 75. {
+                                0.005 * (100. - prog)
+                            } else {
+                                0.125
+                            }
+                        }
+                        _ => 0.,
+                    };
 
                 mat * rot_mat * Mat4::from_translation(translation_base * trans_factor)
             })
@@ -814,7 +816,7 @@ pub fn demo_3d(pentas: &[[i32; 5]; 12]) {
 }
 
 fn pick_number_color(
-    picked: u32,
+    picked: usize,
     numbers: &mut [(
         Gm<Mesh, ColorMaterial>,
         usize,
@@ -823,7 +825,7 @@ fn pick_number_color(
         i32,
     )],
 ) {
-    for num in numbers.iter_mut().skip(picked as usize * 5).take(5) {
+    for num in numbers.iter_mut().skip(picked * 5).take(5) {
         num.0.material.color = COLOR_TEXT_PICK;
     }
 }

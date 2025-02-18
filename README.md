@@ -32,8 +32,9 @@ cargo run --release --bin svg
 * [x] numbers follow facets
 * [x] triangle shines if correct
 * [x] better font
-* [ ] swap anim
-* [ ] unmoveable facet
+* [x] swap anim
+* [x] unmoveable facet
+* [ ] -> toggleable
 * [ ] cheat mode: no swap
 * [ ] easy mode: no swap, no highlight
 * [ ] hard mode: no highlight
