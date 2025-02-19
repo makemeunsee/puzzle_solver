@@ -1,11 +1,14 @@
-use std::{collections::HashSet, env};
+use std::collections::HashSet;
 
 use itertools::Itertools;
 use log::{debug, info, trace};
-use solvers::dodeca::{FACETS, PENTAS, TRI_TO_FACETS};
+use solvers::dodeca::{triangles_to_pentas_shuffled, FACETS, PENTAS, TRI_TO_FACETS};
 
 fn main() {
     env_logger::init();
+
+    // let args = env::args().collect_vec();
+    // let seed: u64 = args[1].parse().unwrap();
 
     // find triplets summing to 96 with:
     // triplets_summing_to_n(1,65,96)
@@ -34,29 +37,19 @@ fn main() {
     ];
     let unused = [19, 47, 48, 54, 57];
 
-    let args = env::args().collect_vec();
-    let seed: u64 = args[1].parse().unwrap();
-
     // see graph.svg for the pentagons/triangles/facets arrangement
 
-    let pentas = generate_one(&triplets, seed);
-    println!("{:?}", pentas);
-
+    // generate a puzzle
+    // let pentas = triangles_to_pentas_shuffled(&triplets, seed, true, true);
+    // check how many sols it has
     // let sols = pentas_on_ico(&pentas);
     // println!("{:?}", sols);
 
-    // debug values
-    // let pentas = (0..60)
-    //     .chunks(5)
-    //     .into_iter()
-    //     .map(|x| x.collect_array().unwrap())
-    //     .collect_array()
-    //     .unwrap();
-    gui::demo_3d(&pentas);
+    gui::demo_3d(&triplets, &unused);
 }
 
 fn generate_inf(triplets: &[(i32, i32, i32); 20], mut seed: u64) {
-    let pentas = generate_one(triplets, seed);
+    let pentas = triangles_to_pentas_shuffled(triplets, seed, true, true);
     let sols = pentas_on_ico(&pentas);
     println!("{:?}", sols);
     loop {
@@ -65,51 +58,6 @@ fn generate_inf(triplets: &[(i32, i32, i32); 20], mut seed: u64) {
         }
         seed += 1;
     }
-}
-
-fn generate_one(triplets: &[(i32, i32, i32); 20], seed: u64) -> [[i32; 5]; 12] {
-    use rand::prelude::*;
-    // Get an RNG:
-    let mut rng = SmallRng::seed_from_u64(seed);
-    let mut triangles: [usize; 20] = (0..20).collect_array().unwrap();
-    triangles.shuffle(&mut rng);
-    let mut facets = [0; 60];
-    for tri in 0..20 {
-        // biased but soooo negligibly
-        let rotation = rng.next_u32() % 3;
-        let facet = TRI_TO_FACETS[triangles[tri]];
-        facets[facet[rotation as usize]] = triplets[tri].0;
-        facets[facet[(rotation as usize + 1) % 3]] = triplets[tri].1;
-        facets[facet[(rotation as usize + 2) % 3]] = triplets[tri].2;
-    }
-    info!("facets:\n{:?}", facets);
-    let pentas: [[i32; 5]; 12] = facets
-        .into_iter()
-        .chunks(5)
-        .into_iter()
-        .map(|x| x.collect_array().unwrap())
-        .collect_array()
-        .unwrap();
-    info!("PENTAS:\n{:?}", PENTAS);
-    info!("pentas:\n{:?}", pentas);
-    let mut pentas_shuffled = pentas;
-    pentas_shuffled.shuffle(&mut rng);
-    pentas_shuffled = pentas_shuffled
-        .into_iter()
-        .map(|penta| {
-            // biased but soooo negligibly
-            let shift = rng.next_u32() as usize % 5;
-            let mut result = [0; 5];
-            for i in 0..5 {
-                result[(i + shift) % 5] = penta[i];
-            }
-            result
-        })
-        .collect_array()
-        .unwrap();
-    info!("pentas shuffled:\n{:?}", pentas_shuffled);
-    pentas_shuffled
-    // pentas
 }
 
 // given N>=12 pentas of 5 facets, try to place them on the vertices of an icosahedron.

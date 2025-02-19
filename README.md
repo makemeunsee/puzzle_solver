@@ -34,7 +34,9 @@ cargo run --release --bin svg
 * [x] better font
 * [x] swap anim
 * [x] unmoveable facet
-* [ ] -> toggleable
+* [x] -> toggleable
+* [ ] different fonts
+* [x] list unused numbers
 * [ ] cheat mode: no swap
 * [ ] easy mode: no swap, no highlight
 * [ ] hard mode: no highlight
