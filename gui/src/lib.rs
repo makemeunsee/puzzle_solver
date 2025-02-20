@@ -1,6 +1,7 @@
 mod shapes;
 
 use itertools::Itertools;
+use log::debug;
 use shapes::{
     facet_shift_rotation, Polyhedron, ICO_TILE_COUNT, TILE0_FACET0_CENTER, TRANSFORMATIONS_BASE,
 };
@@ -113,16 +114,176 @@ fn generate_numbers(
 }
 
 pub fn demo_3d(triplets: &[(i32, i32, i32); 20], unused: &[i32; 5]) {
-    let triplets = *triplets;
-    let mut pentas = triangles_to_pentas_shuffled(&triplets, SEED0, true, true);
-    // debug values: value is facet id
-    // let pentas = (0..60)
-    //     .chunks(5)
-    //     .into_iter()
-    //     .map(|x| x.collect_array().unwrap())
-    //     .collect_array()
-    //     .unwrap();
+    run(Model::new(triplets, unused));
+}
 
+#[derive(Clone)]
+struct Model {
+    triplets: [(i32, i32, i32); 20],
+    pentas: [[i32; 5]; ICO_TILE_COUNT],
+    unused: [i32; 5],
+    seed: u64,
+    puzzle_state: [i32; 5 * ICO_TILE_COUNT],
+    swap_on: bool,
+    anchor_tile: bool,
+    triangle_highlighting: bool,
+}
+
+impl Model {
+    fn new(triplets: &[(i32, i32, i32); 20], unused: &[i32; 5]) -> Self {
+        let triplets = *triplets;
+        debug!("solution:\n{:?}", triplets);
+        let pentas = triangles_to_pentas_shuffled(&triplets, SEED0, true, true);
+
+        // debug values: value is facet id
+        // let pentas = (0..60)
+        //     .chunks(5)
+        //     .into_iter()
+        //     .map(|x| x.collect_array().unwrap())
+        //     .collect_array()
+        //     .unwrap();
+
+        let puzzle_state: [i32; 60] = pentas
+            .iter()
+            .flat_map(|penta| *penta)
+            .collect_array()
+            .unwrap();
+
+        Model {
+            triplets,
+            pentas,
+            unused: *unused,
+            seed: SEED0,
+            puzzle_state,
+            swap_on: true,
+            anchor_tile: true,
+            triangle_highlighting: true,
+        }
+    }
+
+    fn reset(&mut self) {
+        self.pentas = triangles_to_pentas_shuffled(&self.triplets, self.seed, true, self.swap_on);
+        self.puzzle_state = self
+            .pentas
+            .iter()
+            .flat_map(|penta| *penta)
+            .collect_array()
+            .unwrap();
+        self.anchor_tile &= self.swap_on;
+    }
+}
+
+struct UIState {
+    picked_tile_id: Option<usize>,
+    new_pick: Option<usize>,
+    swapping: Option<(usize, usize, f32)>,
+    rotating: [Option<f32>; ICO_TILE_COUNT],
+    pressed_on: Option<(f32, f32)>,
+    has_changes: bool,
+}
+
+impl UIState {
+    fn new() -> Self {
+        UIState {
+            picked_tile_id: None,
+            new_pick: None,
+            swapping: None,
+            rotating: [None; ICO_TILE_COUNT],
+            pressed_on: None,
+            has_changes: true,
+        }
+    }
+
+    fn reset(&mut self) {
+        self.picked_tile_id = None;
+        self.swapping = None;
+        self.rotating = [None; ICO_TILE_COUNT];
+        self.has_changes = true;
+    }
+
+    fn handle_event(
+        &mut self,
+        event: &Event,
+        context: &Context,
+        camera: &Camera,
+        tiles: &Gm<InstancedMesh, PhysicalMaterial>,
+    ) {
+        // track left click presses to identify dragging movements
+        if let Event::MousePress {
+            button, position, ..
+        } = *event
+        {
+            if button == MouseButton::Left {
+                self.pressed_on = Some((position.x, position.y));
+            }
+        }
+        // maybe pick
+        if let Event::MouseRelease {
+            button, position, ..
+        } = *event
+        {
+            // pick only if not a dragging movement
+            if button == MouseButton::Left {
+                let moved = if let Some((x, y)) = self.pressed_on {
+                    let delta_x = position.x - x;
+                    let delta_y = position.y - y;
+                    delta_x * delta_x + delta_y * delta_y > 50.
+                } else {
+                    false
+                };
+                self.pressed_on = None;
+                if !moved {
+                    if let Some(pick) = pick(context, camera, position, tiles) {
+                        match pick.geometry_id {
+                            0 => self.new_pick = Some(pick.instance_id as usize),
+                            _ => unreachable!(),
+                        };
+                    } else {
+                        // picked out -> unpick current
+                        if self.picked_tile_id.is_some() {
+                            self.picked_tile_id = None;
+                            self.has_changes = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn handle_picking(&mut self, anchor_on: bool, swap_on: bool) {
+        if let Some(pick_id) = self.new_pick {
+            if !anchor_on || pick_id != ANCHOR_TILE_ID {
+                self.picked_tile_id = match self.picked_tile_id {
+                    // picked the same tile -> rotate it
+                    Some(id) if id == pick_id => {
+                        if (self.rotating[id] as Option<f32>).is_none() {
+                            self.rotating[id] = Some(0.);
+                        }
+                        Some(id)
+                    }
+
+                    // picked another tile -> swap them
+                    Some(id) if swap_on => {
+                        if self.swapping.is_none() {
+                            self.swapping = Some((id, pick_id, 0.));
+                            self.has_changes = true;
+                        }
+                        Some(id)
+                    }
+
+                    // picked a new tile
+                    _ => {
+                        self.has_changes = true;
+                        Some(pick_id)
+                    }
+                };
+            }
+        }
+        self.new_pick = None;
+    }
+}
+
+fn run(mut model: Model) {
     let window = Window::new(WindowSettings {
         title: "Dodeca".to_string(),
         ..Default::default()
@@ -161,16 +322,16 @@ pub fn demo_3d(triplets: &[(i32, i32, i32); 20], unused: &[i32; 5]) {
         colors: Some(vec![Srgba::GREEN; ICO_TILE_COUNT]),
         ..Default::default()
     };
-    let mut instanced_tiles = Gm::new(
+    let mut tiles = Gm::new(
         InstancedMesh::new(&context, &instances, &tile_mesh),
         PhysicalMaterial::new(&context, &tile_mat),
     );
-    instanced_tiles.material.render_states.cull = Cull::Back;
+    tiles.material.render_states.cull = Cull::Back;
 
-    // numbers unused in the tiles
-    let mut numbers_unused = generate_unused_numbers(unused, &context);
     // numbers on tiles
-    let mut numbers = generate_numbers(&pentas, &context);
+    let mut numbers = generate_numbers(&model.pentas, &context);
+    // numbers unused in the tiles
+    let mut numbers_unused = generate_unused_numbers(&model.unused, &context);
 
     // lights
     let ambient = AmbientLight::new(&context, 0.2, Srgba::WHITE);
@@ -201,13 +362,6 @@ pub fn demo_3d(triplets: &[(i32, i32, i32); 20], unused: &[i32; 5]) {
         },
     );
 
-    // puzzle model
-    let mut puzzle_state: [i32; 60] = pentas
-        .iter()
-        .flat_map(|penta| *penta)
-        .collect_array()
-        .unwrap();
-
     // light vars
     let mut time_d0 = 0.;
     let mut time_d1 = 0.;
@@ -221,23 +375,14 @@ pub fn demo_3d(triplets: &[(i32, i32, i32); 20], unused: &[i32; 5]) {
     // rendering & animation
     let trans_factor = 0.05;
     let tile_anim_speed = 10.0;
-    let mut picked_tile_id = None;
-    let mut rotating = [None; ICO_TILE_COUNT];
-    let mut swapping = None;
-    let mut pressed_on = None;
-    let mut change = true;
     let mut tile_colors = vec![COLOR_TILE_BASE; ICO_TILE_COUNT];
-
     tile_colors[ANCHOR_TILE_ID] = COLOR_TILE_0;
-
-    // GUI states
-    let mut gui = three_d::GUI::new(&context);
-    let mut anchor_tile = true;
-    let mut swap_on = true;
-    let mut seed = SEED0;
+    let mut ui_state = UIState::new();
 
     // camera control
     let mut control = FreeOrbitControl::new(camera.target(), 1.0, 50.0);
+
+    let mut gui = three_d::GUI::new(&context);
 
     window.render_loop(move |mut frame_input| {
         let mut panel_width = 0.0;
@@ -257,30 +402,30 @@ pub fn demo_3d(triplets: &[(i32, i32, i32); 20], unused: &[i32; 5]) {
 
                     ui.label("Gameplay options");
                     if ui
-                        .add(Checkbox::new(&mut anchor_tile, "Anchor tile"))
+                        .add(Checkbox::new(&mut model.anchor_tile, "Anchor tile"))
                         .clicked()
                     {
-                        change = true;
+                        ui_state.has_changes = true;
                     }
                     if ui
                         .add(Checkbox::new(
-                            &mut swap_on,
+                            &mut model.swap_on,
                             "Swappable tiles (resets the puzzle)",
                         ))
                         .clicked()
                     {
-                        pentas = triangles_to_pentas_shuffled(&triplets, seed, true, swap_on);
-                        puzzle_state = pentas
-                            .iter()
-                            .flat_map(|penta| *penta)
-                            .collect_array()
-                            .unwrap();
-                        numbers = generate_numbers(&pentas, &context);
-                        picked_tile_id = None;
-                        swapping = None;
-                        rotating = [None; 12];
-                        anchor_tile = false;
-                        change = true;
+                        model.reset();
+                        ui_state.reset();
+                        numbers = generate_numbers(&model.pentas, &context);
+                    }
+                    if ui
+                        .add(Checkbox::new(
+                            &mut model.triangle_highlighting,
+                            "Highlight valid facets",
+                        ))
+                        .clicked()
+                    {
+                        ui_state.has_changes = true;
                     }
 
                     // ui.add(Slider::new(&mut trans_factor, -2.5..=2.5).text("tile break out"));
@@ -316,6 +461,7 @@ pub fn demo_3d(triplets: &[(i32, i32, i32); 20], unused: &[i32; 5]) {
                 panel_width = gui_context.used_rect().width();
             },
         );
+
         let viewport = Viewport {
             x: (panel_width * frame_input.device_pixel_ratio) as i32,
             y: 0,
@@ -325,84 +471,14 @@ pub fn demo_3d(triplets: &[(i32, i32, i32); 20], unused: &[i32; 5]) {
         };
         camera.set_viewport(viewport);
 
-        let mut pick_id = None;
-
         for event in frame_input.events.iter() {
-            // track left click presses to identify dragging movements
-            if let Event::MousePress {
-                button, position, ..
-            } = *event
-            {
-                if button == MouseButton::Left {
-                    pressed_on = Some((position.x, position.y));
-                }
-            }
-            // maybe pick
-            if let Event::MouseRelease {
-                button, position, ..
-            } = *event
-            {
-                // pick only if not a dragging movement
-                if button == MouseButton::Left {
-                    let moved = if let Some((x, y)) = pressed_on {
-                        let delta_x = position.x - x;
-                        let delta_y = position.y - y;
-                        delta_x * delta_x + delta_y * delta_y > 50.
-                    } else {
-                        false
-                    };
-                    pressed_on = None;
-                    if !moved {
-                        if let Some(pick) = pick(&context, &camera, position, &instanced_tiles) {
-                            match pick.geometry_id {
-                                0 => pick_id = Some(pick.instance_id as usize),
-                                _ => unreachable!(),
-                            };
-                        } else {
-                            // picked out -> unpick current
-                            if let Some(id) = picked_tile_id {
-                                picked_tile_id = None;
-                                tile_colors[id] = COLOR_TILE_BASE;
-                                change = true;
-                            }
-                        }
-                    }
-                }
-            }
+            ui_state.handle_event(event, &context, &camera, &tiles);
         }
-
-        // a geometry was picked
-        if let Some(pick_id) = pick_id {
-            if !anchor_tile || pick_id != ANCHOR_TILE_ID {
-                picked_tile_id = match picked_tile_id {
-                    // picked the same tile -> rotate it
-                    Some(id) if id == pick_id => {
-                        if (rotating[id] as Option<f32>).is_none() {
-                            rotating[id] = Some(0.);
-                        }
-                        Some(id)
-                    }
-
-                    // picked another tile -> swap them
-                    Some(id) if swap_on => {
-                        if swapping.is_none() {
-                            swapping = Some((id, pick_id, 0.));
-                            change = true;
-                        }
-                        Some(id)
-                    }
-
-                    // picked a new tile
-                    _ => {
-                        change = true;
-                        Some(pick_id)
-                    }
-                };
-            }
-        }
+        // process all events, then handle picking if any
+        ui_state.handle_picking(model.anchor_tile, model.swap_on);
 
         // tile rotation processing
-        for (i, rot_opt) in rotating.iter_mut().enumerate() {
+        for (i, rot_opt) in ui_state.rotating.iter_mut().enumerate() {
             match rot_opt {
                 None => (),
                 Some(rot) => {
@@ -422,20 +498,20 @@ pub fn demo_3d(triplets: &[(i32, i32, i32); 20], unused: &[i32; 5]) {
                             let new_j = (j + 1) % 5;
                             let offset0 = offset + j;
                             let offset1 = offset + new_j;
-                            puzzle_state.swap(offset0, offset1);
+                            model.puzzle_state.swap(offset0, offset1);
                             numbers.swap(offset0, offset1);
                             let tmp = numbers[offset0].2;
                             numbers[offset0].2 = numbers[offset1].2;
                             numbers[offset1].2 = tmp;
                         }
-                        change = true;
+                        ui_state.has_changes = true;
                     }
                 }
             }
         }
 
         // swapping processing
-        if let Some((picked_id, o_id, prog)) = swapping {
+        if let Some((picked_id, o_id, prog)) = ui_state.swapping {
             let next_prog = f32::min(
                 100.,
                 prog + frame_input.elapsed_time as f32 * tile_anim_speed / 40.,
@@ -447,7 +523,7 @@ pub fn demo_3d(triplets: &[(i32, i32, i32); 20], unused: &[i32; 5]) {
                 for j in 0..5 {
                     let offset0 = offset + j;
                     let offset1 = o_offset + j;
-                    puzzle_state.swap(offset0, offset1);
+                    model.puzzle_state.swap(offset0, offset1);
                     numbers.swap(offset0, offset1);
                     let tmp = numbers[offset0].1;
                     numbers[offset0].1 = numbers[offset1].1;
@@ -456,50 +532,56 @@ pub fn demo_3d(triplets: &[(i32, i32, i32); 20], unused: &[i32; 5]) {
                     numbers[offset0].2 = numbers[offset1].2;
                     numbers[offset1].2 = tmp;
                 }
-                swapping = Some((o_id, picked_id, next_prog));
-                picked_tile_id = Some(o_id);
-                change = true;
+                ui_state.swapping = Some((o_id, picked_id, next_prog));
+                ui_state.picked_tile_id = Some(o_id);
+                ui_state.has_changes = true;
             } else if next_prog == 100. {
-                swapping = None;
+                ui_state.swapping = None;
             } else {
-                swapping = Some((picked_id, o_id, next_prog));
+                ui_state.swapping = Some((picked_id, o_id, next_prog));
             }
         }
 
         // apply visual changes
-        if change {
+        if ui_state.has_changes {
             let mut win = true;
-            for [a, b, c] in TRI_TO_FACETS {
-                if puzzle_state[a] + puzzle_state[b] + puzzle_state[c] != 96 {
-                    numbers[a].0.material.color = COLOR_TEXT_BAD;
-                    numbers[b].0.material.color = COLOR_TEXT_BAD;
-                    numbers[c].0.material.color = COLOR_TEXT_BAD;
 
+            for [a, b, c] in TRI_TO_FACETS {
+                numbers[a].0.material.color = COLOR_TEXT_BAD;
+                numbers[b].0.material.color = COLOR_TEXT_BAD;
+                numbers[c].0.material.color = COLOR_TEXT_BAD;
+                if model.puzzle_state[a] + model.puzzle_state[b] + model.puzzle_state[c] != 96 {
                     win = false;
-                } else {
+                } else if model.triangle_highlighting {
                     numbers[a].0.material.color = COLOR_TEXT_GOOD;
                     numbers[b].0.material.color = COLOR_TEXT_GOOD;
                     numbers[c].0.material.color = COLOR_TEXT_GOOD;
                 }
             }
+
             for tile_color in &mut tile_colors {
                 *tile_color = COLOR_TILE_BASE;
             }
-            if anchor_tile {
+
+            if model.anchor_tile {
                 tile_colors[ANCHOR_TILE_ID] = COLOR_TILE_0;
-            } else {
-                tile_colors[ANCHOR_TILE_ID] = COLOR_TILE_BASE;
             }
-            if let Some(id) = picked_tile_id {
+
+            if let Some(id) = ui_state.picked_tile_id {
                 for num in numbers.iter_mut().skip(id * 5).take(5) {
                     num.0.material.color = COLOR_TEXT_PICK;
                 }
                 tile_colors[id] = COLOR_TILE_PICK;
             }
+
             if win {
                 // TODO
+                for number in numbers.iter_mut() {
+                    number.0.material.color = COLOR_TEXT_GOOD;
+                }
             }
-            change = false;
+
+            ui_state.has_changes = false;
         }
 
         // compute tile transformations (rotations, swapping animations)
@@ -507,14 +589,14 @@ pub fn demo_3d(triplets: &[(i32, i32, i32); 20], unused: &[i32; 5]) {
             .iter()
             .enumerate()
             .map(|(i, mat)| {
-                let rot_mat = if let Some(rot) = rotating[i] {
+                let rot_mat = if let Some(rot) = ui_state.rotating[i] {
                     Mat4::from_axis_angle(TILE0_FACET0_CENTER.normalize(), degrees(rot))
                 } else {
                     Mat4::identity()
                 };
 
                 let trans_factor = trans_factor
-                    + match swapping {
+                    + match ui_state.swapping {
                         Some((id, o_id, prog)) if i == id || i == o_id => {
                             if prog < 25. {
                                 0.005 * prog
@@ -537,7 +619,7 @@ pub fn demo_3d(triplets: &[(i32, i32, i32); 20], unused: &[i32; 5]) {
         }
 
         // apply tile transformations to tiles
-        instanced_tiles.set_instances(&Instances {
+        tiles.set_instances(&Instances {
             transformations: tile_transformations,
             colors: Some(tile_colors.clone()),
             ..Default::default()
@@ -566,10 +648,10 @@ pub fn demo_3d(triplets: &[(i32, i32, i32); 20], unused: &[i32; 5]) {
         spot0.direction = -vec3(3.0 + c, 5.0 + s, 3.0 - s);
 
         // shadows
-        directional0.generate_shadow_map(1024, &instanced_tiles);
-        directional1.generate_shadow_map(1024, &instanced_tiles);
-        directional2.generate_shadow_map(1024, &instanced_tiles);
-        spot0.generate_shadow_map(1024, &instanced_tiles);
+        directional0.generate_shadow_map(1024, &tiles);
+        directional1.generate_shadow_map(1024, &tiles);
+        directional2.generate_shadow_map(1024, &tiles);
+        spot0.generate_shadow_map(1024, &tiles);
 
         let lights = [
             &ambient as &dyn Light,
@@ -585,7 +667,7 @@ pub fn demo_3d(triplets: &[(i32, i32, i32); 20], unused: &[i32; 5]) {
 
         screen
             .write::<RendererError>(|| {
-                instanced_tiles.render(&camera, &lights);
+                tiles.render(&camera, &lights);
                 for number in &numbers {
                     number.0.render(&camera, &[]);
                 }

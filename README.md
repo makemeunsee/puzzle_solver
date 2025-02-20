@@ -47,3 +47,4 @@ cargo run --release --bin svg
 * [ ] estimate difficulty vs puzzle100
 * [ ] perf issues?
 * [x] darker facet back / shadows again?
+* [ ] fix anchor tile bad rot
