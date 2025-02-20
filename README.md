@@ -19,6 +19,12 @@ RUST_LOG=info cargo run --release --bin native -- $SEED
 
 where `SEED` is a number, used to seed rnd.
 
+### Web
+
+```sh
+RUSTFLAGS='--cfg getrandom_backend="wasm_js"'  wasm-pack build --target web --out-name web --out-dir pkg
+```
+
 ### Generating the icosahedron-dodecahedron graph
 
 ```sh
@@ -27,7 +33,13 @@ cargo run --release --bin svg
 
 ## TODOs
 
-* [ ] fix click capture on web
+* [x] seed input, randomize button
+* [x] different fonts
+* [ ] align unused nums
+* [ ] win animation (breaking/fading out, game controls locked, reveal dodeca?)
+* [ ] estimate difficulty: vs puzzle100, shuffling triangles or not
+* [ ] generate triangles +check has unique sol
+* [x] fix click capture on web
 * [x] facet swapping
 * [x] numbers follow facets
 * [x] triangle shines if correct
@@ -35,16 +47,10 @@ cargo run --release --bin svg
 * [x] swap anim
 * [x] unmoveable facet
 * [x] -> toggleable
-* [ ] different fonts
 * [x] list unused numbers
 * [ ] cheat mode: no swap
 * [ ] easy mode: no swap, no highlight
 * [ ] hard mode: no highlight
 * [ ] impossible mode: 13rd facet
-* [ ] random puzzle button
-* [ ] seed input, +check has unique sol
-* [ ] win animation (breaking/fading out, game controls locked, reveal dodeca?)
-* [ ] estimate difficulty vs puzzle100
 * [ ] perf issues?
 * [x] darker facet back / shadows again?
-* [ ] fix anchor tile bad rot

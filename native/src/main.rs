@@ -2,7 +2,10 @@ use std::collections::HashSet;
 
 use itertools::Itertools;
 use log::{debug, info, trace};
-use solvers::dodeca::{triangles_to_pentas_shuffled, FACETS, PENTAS, TRI_TO_FACETS};
+use solvers::{
+    dodeca::{triangles_to_pentas_shuffled, FACETS, PENTAS, TRI_TO_FACETS},
+    TRIPLETS, UNUSED,
+};
 
 fn main() {
     env_logger::init();
@@ -10,41 +13,16 @@ fn main() {
     // let args = env::args().collect_vec();
     // let seed: u64 = args[1].parse().unwrap();
 
-    // find triplets summing to 96 with:
-    // triplets_summing_to_n(1,65,96)
-
-    let triplets = [
-        (13, 28, 55),
-        (1, 31, 64),
-        (2, 29, 65),
-        (3, 30, 63),
-        (4, 32, 60),
-        (5, 33, 58),
-        (6, 34, 56),
-        (7, 27, 62),
-        (8, 37, 51),
-        (9, 26, 61),
-        (10, 40, 46),
-        (11, 41, 44),
-        (12, 35, 49),
-        (14, 39, 43),
-        (15, 36, 45),
-        (16, 38, 42),
-        (17, 20, 59),
-        (18, 25, 53),
-        (21, 23, 52),
-        (22, 24, 50),
-    ];
-    let unused = [19, 47, 48, 54, 57];
-
     // see graph.svg for the pentagons/triangles/facets arrangement
 
+    let triplets = TRIPLETS;
     // generate a puzzle
     // let pentas = triangles_to_pentas_shuffled(&triplets, seed, true, true);
     // check how many sols it has
     // let sols = pentas_on_ico(&pentas);
     // println!("{:?}", sols);
 
+    let unused = UNUSED;
     gui::demo_3d(&triplets, &unused);
 }
 

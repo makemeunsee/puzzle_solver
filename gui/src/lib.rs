@@ -1,5 +1,7 @@
 mod shapes;
 
+use std::hash::{DefaultHasher, Hash, Hasher};
+
 use itertools::Itertools;
 use log::debug;
 use shapes::{
@@ -22,19 +24,34 @@ const COLOR_TEXT_PICK: Srgba = COLOR_NEON_GREEN;
 const COLOR_TEXT_GOOD: Srgba = COLOR_LIGHT_GOLD;
 const COLOR_TEXT_BAD: Srgba = Srgba::BLACK;
 
-const FONT_OLDENG5: &[u8; 45968] = include_bytes!("OldEnglishFive_mod.ttf");
+const FONT_TYPELIT: &[u8; 7372] = include_bytes!("TypeLightSans_mod.otf");
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+enum Font {
+    TypeLightSans,
+}
+
+fn font_bytes_and_size(font: Font) -> (&'static [u8], f32) {
+    match font {
+        Font::TypeLightSans => (FONT_TYPELIT, 3.5),
+    }
+}
 
 const ANCHOR_TILE_ID: usize = 11;
 
 const SEED0: u64 = 0xACE0FBA5E15DEAD;
 
-fn generate_unused_numbers(unused: &[i32; 5], context: &Context) -> Vec<Gm<Mesh, ColorMaterial>> {
-    let text_generator = TextGenerator::new(FONT_OLDENG5, 0, 25.).unwrap();
+fn generate_unused_numbers(
+    unused: &[i32; 5],
+    context: &Context,
+    font: &[u8],
+    font_size: f32,
+) -> Vec<Gm<Mesh, ColorMaterial>> {
+    let text_generator = TextGenerator::new(font, 0, font_size * 10.).unwrap();
 
     let mut numbers_unused = vec![];
     for i in unused {
-        let text_mesh =
-            text_generator.generate(&format!("{:0>2}", i), TextLayoutOptions::default());
+        let text_mesh = text_generator.generate(&format!("{}", i), TextLayoutOptions::default());
         let mut text = Gm::new(
             Mesh::new(context, &text_mesh),
             ColorMaterial {
@@ -51,6 +68,8 @@ fn generate_unused_numbers(unused: &[i32; 5], context: &Context) -> Vec<Gm<Mesh,
 fn generate_numbers(
     pentas: &[[i32; 5]; ICO_TILE_COUNT],
     context: &Context,
+    font: &[u8],
+    font_size: f32,
 ) -> Vec<(Gm<Mesh, ColorMaterial>, usize, Mat4, Mat4)> {
     // common matrices to place numbers on tiles
     let smaller = Mat4::from_scale(0.1);
@@ -60,19 +79,19 @@ fn generate_numbers(
         (1. * Polyhedron::ico_tile().positions[0] + 2. * Polyhedron::ico_tile().positions[1]) / 3.;
     let tile_translate = Mat4::from_translation(tile_center * 1.001);
 
-    let text_generator = TextGenerator::new(FONT_OLDENG5, 0, 2.).unwrap();
+    let text_generator = TextGenerator::new(font, 0, font_size).unwrap();
 
     let mut numbers = vec![];
     for (i, penta) in pentas.iter().enumerate() {
         for (j, v) in penta.iter().enumerate() {
             let v = *v;
-            let string =
-                if v == 60 || v == 90 || v == 6 || v == 9 || v == 80 || v == 8 || v == 10 || v == 1
-                {
-                    format!("{:0>2}\n\u{2009}_", v)
-                } else {
-                    format!("{:0>2}\n", v)
-                };
+            let string = if v == 6 || v == 9 {
+                format!("{}\n_", v)
+            } else if v == 16 || v == 19 || v == 61 {
+                format!("{}\n\u{2009}_", v)
+            } else {
+                format!("{}\n", v)
+            };
             let text_mesh =
                 text_generator.generate(&string, TextLayoutOptions { line_height: 0.05 });
             let (x_min, x_max, y_min, y_max, z_min, z_max) = text_mesh
@@ -169,7 +188,7 @@ impl Model {
             .flat_map(|penta| *penta)
             .collect_array()
             .unwrap();
-        self.anchor_tile &= self.swap_on;
+        self.anchor_tile = self.swap_on;
     }
 }
 
@@ -179,6 +198,7 @@ struct UIState {
     swapping: Option<(usize, usize, f32)>,
     rotating: [Option<f32>; ICO_TILE_COUNT],
     pressed_on: Option<(f32, f32)>,
+    font: Font,
     has_changes: bool,
 }
 
@@ -190,6 +210,7 @@ impl UIState {
             swapping: None,
             rotating: [None; ICO_TILE_COUNT],
             pressed_on: None,
+            font: Font::TypeLightSans,
             has_changes: true,
         }
     }
@@ -328,10 +349,13 @@ fn run(mut model: Model) {
     );
     tiles.material.render_states.cull = Cull::Back;
 
+    let mut ui_state = UIState::new();
+    let (font_bytes, font_size) = font_bytes_and_size(ui_state.font);
     // numbers on tiles
-    let mut numbers = generate_numbers(&model.pentas, &context);
+    let mut numbers = generate_numbers(&model.pentas, &context, font_bytes, font_size);
     // numbers unused in the tiles
-    let mut numbers_unused = generate_unused_numbers(&model.unused, &context);
+    let mut numbers_unused =
+        generate_unused_numbers(&model.unused, &context, font_bytes, font_size);
 
     // lights
     let ambient = AmbientLight::new(&context, 0.2, Srgba::WHITE);
@@ -377,12 +401,12 @@ fn run(mut model: Model) {
     let tile_anim_speed = 10.0;
     let mut tile_colors = vec![COLOR_TILE_BASE; ICO_TILE_COUNT];
     tile_colors[ANCHOR_TILE_ID] = COLOR_TILE_0;
-    let mut ui_state = UIState::new();
 
     // camera control
     let mut control = FreeOrbitControl::new(camera.target(), 1.0, 50.0);
 
     let mut gui = three_d::GUI::new(&context);
+    let mut seed_buffer = format!("{}", model.seed);
 
     window.render_loop(move |mut frame_input| {
         let mut panel_width = 0.0;
@@ -400,9 +424,38 @@ fn run(mut model: Model) {
 
                     ui.add(three_d::egui::Separator::default());
 
+                    ui.add(TextEdit::singleline(&mut seed_buffer));
+                    if ui.add(Button::new("Randomize tiles from seed")).clicked() {
+                        model.seed = if let Ok(number) = seed_buffer.parse() {
+                            number
+                        } else {
+                            let mut hasher = DefaultHasher::new();
+                            seed_buffer.hash(&mut hasher);
+                            hasher.finish()
+                        };
+                        model.reset();
+                        ui_state.reset();
+                        let (font_bytes, font_size) = font_bytes_and_size(ui_state.font);
+                        numbers = generate_numbers(&model.pentas, &context, font_bytes, font_size);
+                    }
+                    // if ui
+                    //     .radio_value(&mut ui_state.font, Font::TypeLightSans, "Type Light Sans")
+                    //     .clicked()
+                    // {
+                    //     model.reset();
+                    //     ui_state.reset();
+                    //     let (font_bytes, font_size) = font_bytes_and_size(ui_state.font);
+                    //     numbers = generate_numbers(&model.pentas, &context, font_bytes, font_size);
+                    //     numbers_unused =
+                    //         generate_unused_numbers(&model.unused, &context, font_bytes, font_size);
+                    // }
+
                     ui.label("Gameplay options");
                     if ui
-                        .add(Checkbox::new(&mut model.anchor_tile, "Anchor tile"))
+                        .add_enabled(
+                            model.swap_on,
+                            Checkbox::new(&mut model.anchor_tile, "Anchor tile"),
+                        )
                         .clicked()
                     {
                         ui_state.has_changes = true;
@@ -416,7 +469,8 @@ fn run(mut model: Model) {
                     {
                         model.reset();
                         ui_state.reset();
-                        numbers = generate_numbers(&model.pentas, &context);
+                        let (font_bytes, font_size) = font_bytes_and_size(ui_state.font);
+                        numbers = generate_numbers(&model.pentas, &context, font_bytes, font_size);
                     }
                     if ui
                         .add(Checkbox::new(

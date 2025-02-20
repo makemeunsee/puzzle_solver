@@ -1,3 +1,4 @@
+use solvers::{TRIPLETS, UNUSED};
 // Entry point for wasm
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
@@ -11,6 +12,6 @@ pub fn start() -> Result<(), JsValue> {
     info!("Logging works!");
 
     std::panic::set_hook(Box::new(console_error_panic_hook::hook));
-    gui::demo_3d();
+    gui::demo_3d(&TRIPLETS, &UNUSED);
     Ok(())
 }
