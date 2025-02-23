@@ -4,6 +4,7 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 
 use itertools::Itertools;
 use log::debug;
+use rand::rngs::SmallRng;
 use shapes::{
     facet_shift_rotation, Polyhedron, ICO_TILE_COUNT, TILE0_FACET0_CENTER, TRANSFORMATIONS_BASE,
 };
@@ -46,12 +47,23 @@ fn generate_unused_numbers(
     context: &Context,
     font: &[u8],
     font_size: f32,
-) -> Vec<Gm<Mesh, ColorMaterial>> {
+) -> Vec<(Gm<Mesh, ColorMaterial>, (f32, f32, f32, f32))> {
     let text_generator = TextGenerator::new(font, 0, font_size * 10.).unwrap();
 
     let mut numbers_unused = vec![];
     for i in unused {
         let text_mesh = text_generator.generate(&format!("{}", i), TextLayoutOptions::default());
+        let extrema = text_mesh.positions.to_f32().iter().fold(
+            (1000., 0., 1000., 0.),
+            |(x_min, x_max, y_min, y_max), pos| {
+                (
+                    f32::min(x_min, pos.x),
+                    f32::max(x_max, pos.x),
+                    f32::min(y_min, pos.y),
+                    f32::max(y_max, pos.y),
+                )
+            },
+        );
         let mut text = Gm::new(
             Mesh::new(context, &text_mesh),
             ColorMaterial {
@@ -60,7 +72,7 @@ fn generate_unused_numbers(
             },
         );
         text.material.render_states.cull = Cull::Front;
-        numbers_unused.push(text);
+        numbers_unused.push((text, extrema));
     }
     numbers_unused
 }
@@ -146,13 +158,16 @@ struct Model {
     swap_on: bool,
     anchor_tile: bool,
     triangle_highlighting: bool,
+    rng: SmallRng,
 }
 
 impl Model {
     fn new(triplets: &[(i32, i32, i32); 20], unused: &[i32; 5]) -> Self {
+        use rand::prelude::*;
+        let mut rng = SmallRng::seed_from_u64(SEED0);
         let triplets = *triplets;
         debug!("solution:\n{:?}", triplets);
-        let pentas = triangles_to_pentas_shuffled(&triplets, SEED0, true, true);
+        let pentas = triangles_to_pentas_shuffled(&triplets, &mut rng, true, true);
 
         // debug values: value is facet id
         // let pentas = (0..60)
@@ -177,11 +192,13 @@ impl Model {
             swap_on: true,
             anchor_tile: true,
             triangle_highlighting: true,
+            rng,
         }
     }
 
     fn reset(&mut self) {
-        self.pentas = triangles_to_pentas_shuffled(&self.triplets, self.seed, true, self.swap_on);
+        self.pentas =
+            triangles_to_pentas_shuffled(&self.triplets, &mut self.rng, true, self.swap_on);
         self.puzzle_state = self
             .pentas
             .iter()
@@ -725,10 +742,10 @@ fn run(mut model: Model) {
                 for number in &numbers {
                     number.0.render(&camera, &[]);
                 }
-                for (i, number) in numbers_unused.iter_mut().enumerate() {
+                for (i, (number, (x_min, x_max, _, _))) in numbers_unused.iter_mut().enumerate() {
                     let viewport = frame_input.viewport;
                     number.set_transformation(Mat4::from_translation(Vec3::new(
-                        viewport.width as f32 - 50.,
+                        viewport.width as f32 - 25. - (*x_max - *x_min),
                         viewport.height as f32 - (40. * (i + 1) as f32),
                         0.,
                     )));

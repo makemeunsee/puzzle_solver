@@ -31,14 +31,31 @@ RUSTFLAGS='--cfg getrandom_backend="wasm_js"'  wasm-pack build --target web --ou
 cargo run --release --bin svg
 ```
 
+## Complexity
+
+Rotate only: `5^11 = 48'828'135` unique configurations.  
+Average move count to solve: `~200`.
+
+Rotate and swap: `5^11 * 11! = 1'949'062'500'000'000` unique configurations.  
+Average move count to solve: `~2'200'000`.
+
+For comparison, the [original puzzle](https://github.com/makemeunsee/puzzle_solver/) has `2'252'341'248` unique configurations and takes `~10'400'000` moves to solve.
+
+Notes:
+
+* 'move' = placing, rotating, removing a tile.
+* counted by non-exhaustive depth-first search, see `native::pentas_on_ico`.
+
 ## TODOs
 
 * [x] seed input, randomize button
 * [x] different fonts
-* [ ] align unused nums
+* [x] align unused nums
 * [ ] win animation (breaking/fading out, game controls locked, reveal dodeca?)
-* [ ] estimate difficulty: vs puzzle100, shuffling triangles or not
-* [ ] generate triangles +check has unique sol
+* [x] estimate difficulty: vs puzzle100
+* [x] estimate difficulty: shuffling triangles or not => same
+* [x] estimate difficulty: generating other triangles => same
+* [ ] ~~generate triangles +check has unique sol~~ done but no point in keeping it 
 * [x] fix click capture on web
 * [x] facet swapping
 * [x] numbers follow facets

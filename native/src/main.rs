@@ -4,7 +4,7 @@ use itertools::Itertools;
 use log::{debug, info, trace};
 use solvers::{
     dodeca::{triangles_to_pentas_shuffled, FACETS, PENTAS, TRI_TO_FACETS},
-    TRIPLETS, UNUSED,
+    triplets_summing_to_n, TRIPLETS_99_A, UNUSED_99_B,
 };
 
 fn main() {
@@ -15,35 +15,55 @@ fn main() {
 
     // see graph.svg for the pentagons/triangles/facets arrangement
 
-    let triplets = TRIPLETS;
-    // generate a puzzle
-    // let pentas = triangles_to_pentas_shuffled(&triplets, seed, true, true);
-    // check how many sols it has
-    // let sols = pentas_on_ico(&pentas);
-    // println!("{:?}", sols);
+    // generate_inf(1234567890);
 
-    let unused = UNUSED;
+    let triplets = TRIPLETS_99_A;
+    let unused = UNUSED_99_B;
+
     gui::demo_3d(&triplets, &unused);
 }
 
-fn generate_inf(triplets: &[(i32, i32, i32); 20], mut seed: u64) {
-    let pentas = triangles_to_pentas_shuffled(triplets, seed, true, true);
-    let sols = pentas_on_ico(&pentas);
-    println!("{:?}", sols);
+fn generate_inf(mut seed: u64) {
+    use rand::prelude::*;
+    let mut rng = SmallRng::seed_from_u64(seed);
     loop {
+        const START: i32 = 1;
+        const END: i32 = 65;
+        const SUM: i32 = 99;
+        const LEN: usize = 20;
+        let triplets: [(i32, i32, i32); LEN] =
+            triplets_summing_to_n(START, END, SUM, LEN, &mut rng)
+                .unwrap()
+                .into_iter()
+                .collect_array()
+                .unwrap();
+        let unused = triplets.iter().fold(
+            HashSet::from_iter(START..=END),
+            |mut acc: HashSet<i32>, (a, b, c)| {
+                acc.remove(a);
+                acc.remove(b);
+                acc.remove(c);
+                acc
+            },
+        );
+        println!("triplets: {:?}\nunused: {:?}", triplets, unused);
+        let pentas = triangles_to_pentas_shuffled(&triplets, &mut rng, true, true);
+        println!("pentas: {:?}", pentas);
+        let sols = pentas_on_ico(&pentas, SUM);
         if sols.len() != 1 {
             break;
         }
+        println!("OK");
         seed += 1;
     }
 }
 
 // given N>=12 pentas of 5 facets, try to place them on the vertices of an icosahedron.
 // 3 touching facets of 3 touching pentas make up a triangle (icosa face).
-// the sum of the value of the facets of a triangle must equal 96.
+// the sum of the value of the facets of a triangle must equal `n`.
 // returns all found valid combinations of pentas configuration
 // (penta id, rotation)
-fn pentas_on_ico(pentas: &[[i32; 5]]) -> Vec<[(usize, usize); 12]> {
+fn pentas_on_ico(pentas: &[[i32; 5]], n: i32) -> Vec<[(usize, usize); 12]> {
     let mut solutions: Vec<[(usize, usize); 12]> = vec![];
 
     let mut state = [0; 60];
@@ -106,7 +126,7 @@ fn pentas_on_ico(pentas: &[[i32; 5]]) -> Vec<[(usize, usize); 12]> {
                 }
                 sum += state[facet];
             }
-            if full_triangle && sum + val != 96 {
+            if full_triangle && sum + val != n {
                 trace!(
                     "nope: too big; val {}, penta {:?}, tri #{}; local state: {} -> {}, {} -> {}, {} -> {}",
                     val,
@@ -141,17 +161,20 @@ fn pentas_on_ico(pentas: &[[i32; 5]]) -> Vec<[(usize, usize); 12]> {
     };
     place_penta(&mut state, &pentas[id0], rot0, 0);
 
+    let mut move_count = 0;
+
     let mut used = HashSet::from([id0]);
     let mut count = 0;
     'outer: loop {
-        debug!("stack:\n{:?}", stack);
+        trace!("stack:\n{:?}", stack);
         let d = stack.len();
         for (i, penta) in pentas.iter().enumerate() {
             if !used.contains(&i) {
                 for r in 0..5 {
-                    debug!("deeper?");
+                    trace!("deeper?");
                     if place_penta(&mut state, penta, r, d) {
-                        debug!("deeper!");
+                        move_count += 1;
+                        trace!("deeper!");
                         // deeper
                         used.insert(i);
                         // rem.remove(&i);
@@ -164,6 +187,9 @@ fn pentas_on_ico(pentas: &[[i32; 5]]) -> Vec<[(usize, usize); 12]> {
         let d = stack.len();
         if d == 12 {
             // win
+            if count == 0 {
+                info!("move count: {}", move_count);
+            }
             count += 1;
             solutions.push(stack.clone().into_iter().collect_array().unwrap());
             info!("win, new count: {}, stack: {:?}", count, stack);
@@ -177,9 +203,10 @@ fn pentas_on_ico(pentas: &[[i32; 5]]) -> Vec<[(usize, usize); 12]> {
         }
 
         // backtrack
-        debug!("backtracking?");
+        trace!("backtracking?");
         while let Some((prev_i, prev_rot)) = stack.pop() {
-            debug!("backtracking!");
+            move_count += 1;
+            trace!("backtracking!");
             let d = stack.len();
             if d == 0 {
                 // we've backtracked to the 0 state
@@ -194,6 +221,7 @@ fn pentas_on_ico(pentas: &[[i32; 5]]) -> Vec<[(usize, usize); 12]> {
             // rem.insert(prev_i);
             for r in prev_rot + 1..5 {
                 if place_penta(&mut state, &pentas[prev_i], r, d) {
+                    move_count += 1;
                     // sideway, same penta but different rot
                     used.insert(prev_i);
                     // rem.remove(&prev_i);
@@ -205,6 +233,7 @@ fn pentas_on_ico(pentas: &[[i32; 5]]) -> Vec<[(usize, usize); 12]> {
                 if !used.contains(&i) {
                     for r in 0..5 {
                         if place_penta(&mut state, penta, r, d) {
+                            move_count += 1;
                             // sideway, same penta but different rot
                             used.insert(i);
                             // rem.remove(&prev_i);
@@ -216,105 +245,5 @@ fn pentas_on_ico(pentas: &[[i32; 5]]) -> Vec<[(usize, usize); 12]> {
             }
         }
     }
-    info!("sol count: {}", count);
     solutions
-}
-
-fn triplets_summing_to_n(min: u16, max: u16, n: u16) -> Vec<Vec<(u16, u16, u16)>> {
-    let mut solutions: Vec<(u16, u16, u16)> = vec![];
-    for i in min..=max {
-        for j in i + 1..=max {
-            for k in j + 1..=max {
-                if i + j + k == n {
-                    // debug!("{} + {} + {} = {}", i, j, k, n);
-                    solutions.push((i, j, k));
-                }
-            }
-        }
-    }
-    let total = solutions.len();
-    info!("sols: {} - {:?}", total, solutions);
-
-    let sol0 = solutions[256];
-    let mut stack = vec![(sol0, 1)];
-    let mut used = HashSet::from([sol0.0, sol0.1, sol0.2]);
-    let mut count = 0;
-    let mut max_depth = 0;
-    let mut max_depth_count = 0;
-    'outer: while !stack.is_empty() {
-        let (e, offset) = stack.last().unwrap();
-        let d = stack.len();
-        if d == 1 {
-            count += 1;
-            info!("new root {:?}, {}/{}", e, count, total);
-        }
-        for (ooffset, (i, j, k)) in solutions.iter().enumerate().skip(*offset) {
-            if !used.contains(i) && !used.contains(j) && !used.contains(k) {
-                // deeper
-                used.insert(*i);
-                used.insert(*j);
-                used.insert(*k);
-                stack.push(((*i, *j, *k), ooffset + 1));
-                // let d = stack.len();
-                // debug!("deeper {:?} - {}", (i, j, k), d);
-                continue 'outer;
-            }
-        }
-        // // TODO deadend, how deep are we?
-        let d = stack.len();
-        trace!(
-            "depth: {} - {:?}",
-            d,
-            stack.iter().map(|p| p.0).collect_vec()
-        );
-        if d > max_depth {
-            max_depth_count = 1;
-            info!(
-                "deadend, depth: {}\n{:?}",
-                d,
-                stack.iter().map(|p| p.0).collect_vec()
-            );
-            max_depth = d;
-        } else if d == max_depth {
-            max_depth_count += 1;
-            if max_depth_count % 1000 == 0 {
-                let triplets = stack.iter().map(|p| p.0).collect_vec();
-                let mut anti_set: HashSet<u16> = HashSet::from_iter(min..=max);
-                for t in &triplets {
-                    anti_set.remove(&t.0);
-                    anti_set.remove(&t.1);
-                    anti_set.remove(&t.2);
-                }
-                info!(
-                    "yikes {}\n{:?}\n{:?}",
-                    max_depth_count,
-                    triplets,
-                    anti_set.into_iter().sorted().collect_vec()
-                );
-            }
-        }
-
-        // backtrack
-        while let Some(((i, j, k), offset)) = stack.pop() {
-            // let d = stack.len();
-            // debug!("backtracking - {}", d);
-            used.remove(&i);
-            used.remove(&j);
-            used.remove(&k);
-            for (ooffset, (i, j, k)) in solutions.iter().enumerate().skip(offset) {
-                if !used.contains(i) && !used.contains(j) && !used.contains(k) {
-                    // sideway
-                    used.insert(*i);
-                    used.insert(*j);
-                    used.insert(*k);
-                    stack.push(((*i, *j, *k), ooffset + 1));
-                    // let d = stack.len();
-                    // debug!("sideway {:?} - {}", (i, j, k), d);
-                    continue 'outer;
-                }
-            }
-        }
-    }
-    debug!("max depth {}, count: {}", max_depth, max_depth_count);
-    vec![]
 }

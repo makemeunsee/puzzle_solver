@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use rand::{rngs::SmallRng, seq::SliceRandom, RngCore};
 
 // see graph.svg for the pentagons/triangles/facets arrangement
 
@@ -110,32 +111,18 @@ pub const FACETS: [(usize, usize); 60] = [
 
 pub fn triangles_to_pentas_shuffled(
     triplets: &[(i32, i32, i32); 20],
-    seed: u64,
+    rng: &mut SmallRng,
     rotation_shuffle: bool,
     position_shuffle: bool,
 ) -> [[i32; 5]; 12] {
-    use rand::prelude::*;
-    // Get an RNG:
-    let mut rng = SmallRng::seed_from_u64(seed);
     let triangles: [usize; 20] = (0..20).collect_array().unwrap();
-
-    // TODO useful??
-    // triangles.shuffle(&mut rng);
 
     let mut facets = [0; 60];
     for tri in 0..20 {
-        let rotation = 0;
-        // TODO useful?
-        // biased but soooo negligibly
-        // if rotation_shuffle {
-        //     rng.next_u32() % 3
-        // } else {
-        //     0
-        // };
         let facet = TRI_TO_FACETS[triangles[tri]];
-        facets[facet[rotation as usize]] = triplets[tri].0;
-        facets[facet[(rotation as usize + 1) % 3]] = triplets[tri].1;
-        facets[facet[(rotation as usize + 2) % 3]] = triplets[tri].2;
+        facets[facet[0]] = triplets[tri].0;
+        facets[facet[1]] = triplets[tri].1;
+        facets[facet[2]] = triplets[tri].2;
     }
     let pentas: [[i32; 5]; 12] = facets
         .into_iter()
@@ -146,7 +133,7 @@ pub fn triangles_to_pentas_shuffled(
         .unwrap();
     let mut pentas_shuffled = pentas;
     if position_shuffle {
-        pentas_shuffled.shuffle(&mut rng);
+        pentas_shuffled.shuffle(rng);
     }
     pentas_shuffled = pentas_shuffled
         .into_iter()

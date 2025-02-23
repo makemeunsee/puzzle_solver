@@ -638,6 +638,7 @@ dependencies = [
  "itertools",
  "lazy_static",
  "log",
+ "rand",
  "solvers",
  "three-d",
 ]
@@ -914,6 +915,7 @@ dependencies = [
  "gui",
  "itertools",
  "log",
+ "rand",
  "solvers",
  "svg",
 ]
@@ -1402,6 +1404,7 @@ name = "solvers"
 version = "0.1.0"
 dependencies = [
  "itertools",
+ "log",
  "rand",
 ]
 
