@@ -154,6 +154,7 @@ struct Model {
     pentas: [[i32; 5]; ICO_TILE_COUNT],
     unused: [i32; 5],
     seed: u64,
+    goal_sum: i32,
     puzzle_state: [i32; 5 * ICO_TILE_COUNT],
     swap_on: bool,
     anchor_tile: bool,
@@ -183,11 +184,14 @@ impl Model {
             .collect_array()
             .unwrap();
 
+        let goal_sum = triplets[0].0 + triplets[0].1 + triplets[0].2;
+
         Model {
             triplets,
             pentas,
             unused: *unused,
             seed: SEED0,
+            goal_sum,
             puzzle_state,
             swap_on: true,
             anchor_tile: true,
@@ -621,7 +625,9 @@ fn run(mut model: Model) {
                 numbers[a].0.material.color = COLOR_TEXT_BAD;
                 numbers[b].0.material.color = COLOR_TEXT_BAD;
                 numbers[c].0.material.color = COLOR_TEXT_BAD;
-                if model.puzzle_state[a] + model.puzzle_state[b] + model.puzzle_state[c] != 96 {
+                if model.puzzle_state[a] + model.puzzle_state[b] + model.puzzle_state[c]
+                    != model.goal_sum
+                {
                     win = false;
                 } else if model.triangle_highlighting {
                     numbers[a].0.material.color = COLOR_TEXT_GOOD;
