@@ -4,7 +4,7 @@ use itertools::Itertools;
 use log::{debug, info, trace};
 use solvers::{
     dodeca::{triangles_to_pentas_shuffled, FACETS, PENTAS, TRI_TO_FACETS},
-    triplets_summing_to_n, TRIPLETS_99_A, UNUSED_99_B,
+    triplets_summing_to_n, TRIPLETS_99_A, UNUSED_99_A,
 };
 
 fn main() {
@@ -18,7 +18,7 @@ fn main() {
     // generate_inf(1234567890);
 
     let triplets = TRIPLETS_99_A;
-    let unused = UNUSED_99_B;
+    let unused = UNUSED_99_A;
 
     gui::demo_3d(&triplets, &unused);
 }

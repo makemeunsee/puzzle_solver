@@ -9,7 +9,13 @@ use shapes::{
     facet_shift_rotation, Polyhedron, ICO_TILE_COUNT, TILE0_FACET0_CENTER, TRANSFORMATIONS_BASE,
 };
 use solvers::dodeca::{triangles_to_pentas_shuffled, TRI_TO_FACETS};
-use three_d::*;
+use three_d::{
+    core::Context, degrees, pick, vec3, AmbientLight, Camera, ClearState, ColorMaterial,
+    CpuMaterial, Cull, DirectionalLight, Event, FrameOutput, FreeOrbitControl, Geometry, Gm,
+    InnerSpace, InstancedMesh, Instances, Light, Mat4, Mesh, MouseButton, Object, PhysicalMaterial,
+    RendererError, SquareMatrix, Srgba, TextGenerator, TextLayoutOptions, Vec3, Vec4, Viewport,
+    Window, WindowSettings,
+};
 
 const COLOR_LIGHT_BLUE: Srgba = Srgba::new_opaque(100, 150, 255);
 const COLOR_LIGHT_GOLD: Srgba = Srgba::new_opaque(220, 220, 150);
@@ -247,9 +253,20 @@ impl UIState {
         &mut self,
         event: &Event,
         context: &Context,
-        camera: &Camera,
+        camera: &mut Camera,
         tiles: &Gm<InstancedMesh, PhysicalMaterial>,
     ) {
+        // if let Event::MouseMotion { delta, button, .. } = *event {
+        //     if Some(MouseButton::Left) == button {
+        //         let target = camera.target();
+        //         let speed = 0.01 * target.distance(camera.position()) + 0.001;
+        //         // let rot_x = Mat4::from_angle_x(degrees(speed * delta.0));
+        //         // let rot_y = Mat4::from_angle_y(degrees(speed * delta.1));
+        //         // self.global_rot = self.global_rot * rot_x;
+        //         // self.global_rot = self.global_rot * rot_y;
+        //         camera.rotate_around(target, speed * delta.0, speed * delta.1);
+        //     }
+        // }
         // track left click presses to identify dragging movements
         if let Event::MousePress {
             button, position, ..
@@ -333,11 +350,13 @@ fn run(mut model: Model) {
     .unwrap();
     let context = window.gl();
 
+    let up = -Polyhedron::ico_tile().positions[0];
+    let up = TRANSFORMATIONS_BASE[ANCHOR_TILE_ID] * Vec4::new(up.x, up.y, up.z, 0.0);
     let mut camera = Camera::new_perspective(
         window.viewport(),
         vec3(4.0, 4.0, 8.0),
         vec3(0.0, 0.0, 0.0),
-        vec3(0.0, 1.0, 0.0),
+        up.truncate().normalize(),
         degrees(45.0),
         0.1,
         100.0,
@@ -357,7 +376,42 @@ fn run(mut model: Model) {
         ..Default::default()
     };
 
-    let tile_mesh = Polyhedron::ico_tile().into_mesh();
+    let dodeca_mesh = Polyhedron::regular_dodecahedron().into_mesh();
+    let mut dodeca = Gm::new(
+        Mesh::new(&context, &dodeca_mesh),
+        PhysicalMaterial::new(&context, &tile_mat),
+    );
+    dodeca.material.albedo = COLOR_GOLD;
+
+    let tile = Polyhedron::ico_tile();
+    const THIN_TILE_INDEX_COUNT: usize = 30;
+    let thin_tile = Polyhedron {
+        positions: tile
+            .positions
+            .iter()
+            .take(THIN_TILE_INDEX_COUNT)
+            .cloned()
+            .collect_vec(),
+        indices: tile
+            .indices
+            .iter()
+            .take(THIN_TILE_INDEX_COUNT)
+            .cloned()
+            .collect_vec(),
+    };
+    let thin_tile_mesh = thin_tile.into_mesh();
+    let thin_instances = Instances {
+        transformations: vec![],
+        colors: Some(vec![Srgba::GREEN; ICO_TILE_COUNT]),
+        ..Default::default()
+    };
+    let mut thin_tiles = Gm::new(
+        InstancedMesh::new(&context, &thin_instances, &thin_tile_mesh),
+        PhysicalMaterial::new(&context, &tile_mat),
+    );
+    thin_tiles.material.render_states.cull = Cull::Back;
+
+    let tile_mesh = tile.into_mesh();
 
     let instances = Instances {
         transformations: vec![],
@@ -379,55 +433,63 @@ fn run(mut model: Model) {
         generate_unused_numbers(&model.unused, &context, font_bytes, font_size);
 
     // lights
-    let ambient = AmbientLight::new(&context, 0.2, Srgba::WHITE);
-    let mut directional0 = DirectionalLight::new(
-        &context,
-        1.0,
-        Srgba::new_opaque(255, 150, 0),
-        vec3(0.0, -1.0, 0.0),
-    );
-    let mut directional1 = DirectionalLight::new(&context, 1.0, Srgba::WHITE, vec3(0.0, -1.0, 0.0));
-    let mut directional2 = DirectionalLight::new(
-        &context,
-        1.0,
-        Srgba::new_opaque(255, 192, 203),
-        vec3(0.0, -1.0, 0.0),
-    );
-    let mut spot0 = SpotLight::new(
-        &context,
-        5.0,
-        Srgba::new_opaque(220, 200, 180),
-        vec3(0.0, 0.0, 0.0),
-        vec3(0.0, -1.0, 0.0),
-        degrees(25.0),
-        Attenuation {
-            constant: 0.1,
-            linear: 0.001,
-            quadratic: 0.0001,
-        },
-    );
+    let light_amb_col = Srgba::WHITE;
+    let mut ambient = AmbientLight::new(&context, 0.2, light_amb_col);
 
-    // light vars
-    let mut time_d0 = 0.;
-    let mut time_d1 = 0.;
-    let mut time_d2 = 0.;
-    let mut time_s0 = 0.;
-    let speed_d0 = 0;
-    let speed_d1 = 0;
-    let speed_d2 = 0;
-    let speed_s0 = 0;
+    let light_dir0 = vec3(0.0, 0.0, -1.0);
+    let light_col0 = Srgba::WHITE;
+    let mut directional0 = DirectionalLight::new(&context, 0.8, light_col0, light_dir0);
+    let light_dir1 = vec3(0.0, -1.0, 0.0);
+    let light_col1 = COLOR_FIERY_RED;
+    let mut directional1 = DirectionalLight::new(&context, 1.0, light_col1, light_dir1);
 
     // rendering & animation
-    let trans_factor = 0.05;
+    let mut trans_factor = 0.05;
     let tile_anim_speed = 10.0;
+    let mut thick = true;
     let mut tile_colors = vec![COLOR_TILE_BASE; ICO_TILE_COUNT];
     tile_colors[ANCHOR_TILE_ID] = COLOR_TILE_0;
+    let mut tile_col = [
+        COLOR_TILE_BASE.r as f32 / 255.,
+        COLOR_TILE_BASE.g as f32 / 255.,
+        COLOR_TILE_BASE.b as f32 / 255.,
+        1.,
+    ];
+    let mut show_dodeca = false;
+    let mut dodeca_col = [
+        dodeca.material.albedo.r as f32 / 255.,
+        dodeca.material.albedo.g as f32 / 255.,
+        dodeca.material.albedo.b as f32 / 255.,
+        1.,
+    ];
 
     // camera control
     let mut control = FreeOrbitControl::new(camera.target(), 1.0, 50.0);
 
     let mut gui = three_d::GUI::new(&context);
     let mut seed_buffer = format!("{}", model.seed);
+
+    // lights control vars
+    let mut light_amb_col = [
+        light_amb_col.r as f32 / 255.,
+        light_amb_col.g as f32 / 255.,
+        light_amb_col.b as f32 / 255.,
+        1.,
+    ];
+    let mut light_dir0_col = [
+        light_col0.r as f32 / 255.,
+        light_col0.g as f32 / 255.,
+        light_col0.b as f32 / 255.,
+        1.,
+    ];
+    let mut light_dir1_col = [
+        light_col1.r as f32 / 255.,
+        light_col1.g as f32 / 255.,
+        light_col1.b as f32 / 255.,
+        1.,
+    ];
+    let mut light_dir0_shadows = true;
+    let mut light_dir1_shadows = true;
 
     window.render_loop(move |mut frame_input| {
         let mut panel_width = 0.0;
@@ -441,9 +503,7 @@ fn run(mut model: Model) {
                 SidePanel::left("side_panel").show(gui_context, |ui| {
                     use three_d::egui::*;
                     ui.add_space(50.);
-                    ui.heading("Control Panel");
-
-                    ui.add(three_d::egui::Separator::default());
+                    ui.heading("Generation");
 
                     ui.add(TextEdit::singleline(&mut seed_buffer));
                     if ui.add(Button::new("Randomize tiles from seed")).clicked() {
@@ -471,7 +531,8 @@ fn run(mut model: Model) {
                     //         generate_unused_numbers(&model.unused, &context, font_bytes, font_size);
                     // }
 
-                    ui.label("Gameplay options");
+                    ui.add(three_d::egui::Separator::default());
+                    ui.heading("Gameplay");
                     if ui
                         .add_enabled(
                             model.swap_on,
@@ -503,35 +564,50 @@ fn run(mut model: Model) {
                         ui_state.has_changes = true;
                     }
 
-                    // ui.add(Slider::new(&mut trans_factor, -2.5..=2.5).text("tile break out"));
-                    // ui.add(
-                    //     Slider::new(&mut tile_anim_speed, 1.0..=20.0)
-                    //         .text("tile animation speed"),
-                    // );
+                    ui.add(three_d::egui::Separator::default());
+                    ui.heading("Rendering");
 
-                    // ui.add(three_d::egui::Separator::default());
+                    ui.add(Slider::new(&mut trans_factor, -2.25..=1.).text("tile break out"));
+                    ui.checkbox(&mut show_dodeca, "Put a dodecahedron inside");
+                    let dodeca_color_label = ui.label("Dodeca color");
+                    ui.color_edit_button_rgba_unmultiplied(&mut dodeca_col)
+                        .labelled_by(dodeca_color_label.id);
+                    ui.checkbox(&mut thick, "Thick tiles");
+                    let tile_color_label = ui.label("Tile color");
+                    if ui
+                        .color_edit_button_rgba_unmultiplied(&mut tile_col)
+                        .labelled_by(tile_color_label.id)
+                        .changed()
+                    {
+                        ui_state.has_changes = true;
+                    }
 
-                    // ui.label("Light options");
-                    // ui.add(
-                    //     Slider::new(&mut ambient.intensity, 0.0..=1.0).text("Ambient intensity"),
-                    // );
-                    // ui.add(
-                    //     Slider::new(&mut directional0.intensity, 0.0..=1.0)
-                    //         .text("Directional 0 intensity"),
-                    // );
-                    // ui.add(Slider::new(&mut speed_d0, 0..=10).text("Directional 0 speed"));
-                    // ui.add(
-                    //     Slider::new(&mut directional1.intensity, 0.0..=1.0)
-                    //         .text("Directional 1 intensity"),
-                    // );
-                    // ui.add(Slider::new(&mut speed_d1, 0..=10).text("Directional 1 speed"));
-                    // ui.add(
-                    //     Slider::new(&mut directional2.intensity, 0.0..=1.0)
-                    //         .text("Directional 2 intensity"),
-                    // );
-                    // ui.add(Slider::new(&mut speed_d2, 0..=10).text("Directional 2 speed"));
-                    // ui.add(Slider::new(&mut spot0.intensity, 0.0..=10.0).text("Spot intensity"));
-                    // ui.add(Slider::new(&mut speed_s0, 0..=10).text("Spot speed"));
+                    ui.add(three_d::egui::Separator::default());
+                    ui.heading("Lighting");
+                    ui.add(
+                        Slider::new(&mut tiles.material.metallic, 0.0..=1.0)
+                            .text("Tile metallicity"),
+                    );
+                    ui.add(
+                        Slider::new(&mut tiles.material.roughness, 0.0..=1.0)
+                            .text("Tile roughness"),
+                    );
+                    ui.add(
+                        Slider::new(&mut ambient.intensity, 0.0..=1.0).text("Ambient intensity"),
+                    );
+                    ui.color_edit_button_rgba_unmultiplied(&mut light_amb_col);
+                    ui.add(
+                        Slider::new(&mut directional0.intensity, 0.0..=1.0)
+                            .text("Directional 0 intensity"),
+                    );
+                    ui.color_edit_button_rgba_unmultiplied(&mut light_dir0_col);
+                    ui.checkbox(&mut light_dir0_shadows, "Directional 0 shadows");
+                    ui.add(
+                        Slider::new(&mut directional1.intensity, 0.0..=1.0)
+                            .text("Directional 1 intensity"),
+                    );
+                    ui.color_edit_button_rgba_unmultiplied(&mut light_dir1_col);
+                    ui.checkbox(&mut light_dir1_shadows, "Directional 1 shadows");
                 });
                 panel_width = gui_context.used_rect().width();
             },
@@ -547,7 +623,7 @@ fn run(mut model: Model) {
         camera.set_viewport(viewport);
 
         for event in frame_input.events.iter() {
-            ui_state.handle_event(event, &context, &camera, &tiles);
+            ui_state.handle_event(event, &context, &mut camera, &tiles);
         }
         // process all events, then handle picking if any
         ui_state.handle_picking(model.anchor_tile, model.swap_on);
@@ -637,7 +713,7 @@ fn run(mut model: Model) {
             }
 
             for tile_color in &mut tile_colors {
-                *tile_color = COLOR_TILE_BASE;
+                *tile_color = Srgba::from(tile_col);
             }
 
             if model.anchor_tile {
@@ -697,46 +773,52 @@ fn run(mut model: Model) {
 
         // apply tile transformations to tiles
         tiles.set_instances(&Instances {
+            transformations: tile_transformations.clone(),
+            colors: Some(tile_colors.clone()),
+            ..Default::default()
+        });
+        thin_tiles.set_instances(&Instances {
             transformations: tile_transformations,
             colors: Some(tile_colors.clone()),
             ..Default::default()
         });
 
+        // dodeca color
+        dodeca.material.albedo = Srgba::from(dodeca_col);
+
         // camera controls
         control.handle_events(&mut camera, &mut frame_input.events);
 
-        // lights movements
-        time_d0 += (speed_d0 * speed_d0) as f32 * 0.0001 * frame_input.elapsed_time as f32;
-        let c = time_d0.cos();
-        let s = time_d0.sin();
-        directional0.direction = vec3(-1.0 - c, -1.0, 1.0 + s);
-        time_d1 += (speed_d1 * speed_d1) as f32 * 0.0001 * frame_input.elapsed_time as f32;
-        let c = time_d1.cos();
-        let s = time_d1.sin();
-        directional1.direction = vec3(1.0 + c, -1.0, -1.0 - s);
-        time_d2 += (speed_d2 * speed_d2) as f32 * 0.0001 * frame_input.elapsed_time as f32;
-        let c = time_d2.cos();
-        let s = time_d2.sin();
-        directional2.direction = vec3(-1.0 + c, 1.0, 1.0 - s);
-        time_s0 += (speed_s0 * speed_s0) as f32 * 0.0001 * frame_input.elapsed_time as f32;
-        let c = time_s0.cos();
-        let s = time_s0.sin();
-        spot0.position = vec3(3.0 + c, 5.0 + s, 3.0 - s);
-        spot0.direction = -vec3(3.0 + c, 5.0 + s, 3.0 - s);
+        // lights controls
+        ambient.color = Srgba::from(light_amb_col);
+
+        let cam_pos = camera.position();
+        directional0.direction = -cam_pos;
+        directional0.color = Srgba::from(light_dir0_col);
+        directional1.direction = (-cam_pos - camera.up()) / 2.;
+        directional1.color = Srgba::from(light_dir1_col);
 
         // shadows
-        directional0.generate_shadow_map(1024, &tiles);
-        directional1.generate_shadow_map(1024, &tiles);
-        directional2.generate_shadow_map(1024, &tiles);
-        spot0.generate_shadow_map(1024, &tiles);
+        if light_dir0_shadows {
+            if thick {
+                directional0.generate_shadow_map(1024, &tiles);
+            } else {
+                directional0.generate_shadow_map(1024, &thin_tiles);
+            }
+        } else {
+            directional0.clear_shadow_map();
+        }
+        if light_dir1_shadows {
+            if thick {
+                directional1.generate_shadow_map(1024, &tiles);
+            } else {
+                directional1.generate_shadow_map(1024, &thin_tiles);
+            }
+        } else {
+            directional1.clear_shadow_map();
+        }
 
-        let lights = [
-            &ambient as &dyn Light,
-            &spot0,
-            &directional0,
-            &directional1,
-            &directional2,
-        ];
+        let lights = [&ambient as &dyn Light, &directional0, &directional1];
 
         // draw
         let screen = frame_input.screen();
@@ -744,7 +826,14 @@ fn run(mut model: Model) {
 
         screen
             .write::<RendererError>(|| {
-                tiles.render(&camera, &lights);
+                if show_dodeca {
+                    dodeca.render(&camera, &lights);
+                }
+                if thick {
+                    tiles.render(&camera, &lights);
+                } else {
+                    thin_tiles.render_with_material(&tiles.material, &camera, &lights);
+                }
                 for number in &numbers {
                     number.0.render(&camera, &[]);
                 }

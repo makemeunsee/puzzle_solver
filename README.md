@@ -48,6 +48,11 @@ Notes:
 
 ## TODOs
 
+* [ ] lights controls: ~~color, intensity, shadows,~~ position
+* [x] non solid tiles
+* [ ] ~~darker tile inside~~ too much hassle
+* [x] metallicity control
+* [x] visu controls: trans factor
 * [x] seed input, randomize button
 * [x] different fonts
 * [x] align unused nums
