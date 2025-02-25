@@ -1,6 +1,9 @@
 mod shapes;
 
-use std::hash::{DefaultHasher, Hash, Hasher};
+use std::{
+    collections::HashMap,
+    hash::{DefaultHasher, Hash, Hasher},
+};
 
 use itertools::Itertools;
 use log::debug;
@@ -12,17 +15,18 @@ use solvers::dodeca::{triangles_to_pentas_shuffled, TRI_TO_FACETS};
 use three_d::{
     core::Context, degrees, pick, vec3, AmbientLight, Camera, ClearState, ColorMaterial,
     CpuMaterial, Cull, DirectionalLight, Event, FrameOutput, FreeOrbitControl, Geometry, Gm,
-    InnerSpace, InstancedMesh, Instances, Light, Mat4, Mesh, MouseButton, Object, PhysicalMaterial,
-    RendererError, SquareMatrix, Srgba, TextGenerator, TextLayoutOptions, Vec3, Vec4, Viewport,
-    Window, WindowSettings,
+    InnerSpace, InstancedMesh, Instances, Light, Mat3, Mat4, Mesh, MouseButton, Object,
+    PhysicalMaterial, RendererError, SquareMatrix, Srgba, TextGenerator, TextLayoutOptions, Vec3,
+    Vec4, Viewer, Viewport, Window, WindowSettings,
 };
 
 const COLOR_LIGHT_BLUE: Srgba = Srgba::new_opaque(100, 150, 255);
 const COLOR_LIGHT_GOLD: Srgba = Srgba::new_opaque(220, 220, 150);
 const COLOR_NEON_GREEN: Srgba = Srgba::new_opaque(100, 255, 100);
 const COLOR_FIERY_RED: Srgba = Srgba::new_opaque(255, 50, 0);
-const COLOR_GOLD: Srgba = Srgba::new_opaque(240, 160, 80);
+const COLOR_GOLD: Srgba = Srgba::new_opaque(212, 175, 55);
 const COLOR_GRAY_BROWN: Srgba = Srgba::new_opaque(94, 94, 80);
+const COLOR_BLACK_BROWN: Srgba = Srgba::new_opaque(30, 30, 25);
 
 const COLOR_TILE_0: Srgba = Srgba::new_opaque(150, 90, 0);
 const COLOR_TILE_BASE: Srgba = COLOR_GOLD;
@@ -48,17 +52,17 @@ const ANCHOR_TILE_ID: usize = 11;
 
 const SEED0: u64 = 0xACE0FBA5E15DEAD;
 
-fn generate_unused_numbers(
-    unused: &[i32; 5],
+fn generate_numbers_and_bounds(
+    numbers: &[i32],
     context: &Context,
     font: &[u8],
     font_size: f32,
-) -> Vec<(Gm<Mesh, ColorMaterial>, (f32, f32, f32, f32))> {
+) -> HashMap<i32, (Gm<Mesh, ColorMaterial>, (f32, f32, f32, f32))> {
     let text_generator = TextGenerator::new(font, 0, font_size * 10.).unwrap();
 
-    let mut numbers_unused = vec![];
-    for i in unused {
-        let text_mesh = text_generator.generate(&format!("{}", i), TextLayoutOptions::default());
+    let mut result = HashMap::new();
+    for n in numbers {
+        let text_mesh = text_generator.generate(&format!("{}", n), TextLayoutOptions::default());
         let extrema = text_mesh.positions.to_f32().iter().fold(
             (1000., 0., 1000., 0.),
             |(x_min, x_max, y_min, y_max), pos| {
@@ -78,9 +82,9 @@ fn generate_unused_numbers(
             },
         );
         text.material.render_states.cull = Cull::Front;
-        numbers_unused.push((text, extrema));
+        result.insert(*n, (text, extrema));
     }
-    numbers_unused
+    result
 }
 
 fn generate_numbers(
@@ -219,6 +223,13 @@ impl Model {
     }
 }
 
+#[derive(PartialEq, Eq)]
+enum GrabMotion {
+    Camera,
+    LightDir0,
+    LightDir1,
+}
+
 struct UIState {
     picked_tile_id: Option<usize>,
     new_pick: Option<usize>,
@@ -226,6 +237,11 @@ struct UIState {
     rotating: [Option<f32>; ICO_TILE_COUNT],
     pressed_on: Option<(f32, f32)>,
     font: Font,
+    picked_number: Option<i32>,
+    number_grid: bool,
+    grab_motion: GrabMotion,
+    light_cam0: (f32, f32),
+    light_cam1: (f32, f32),
     has_changes: bool,
 }
 
@@ -238,6 +254,11 @@ impl UIState {
             rotating: [None; ICO_TILE_COUNT],
             pressed_on: None,
             font: Font::TypeLightSans,
+            picked_number: None,
+            number_grid: true,
+            grab_motion: GrabMotion::Camera,
+            light_cam0: (0., 0.),
+            light_cam1: (0., 0.),
             has_changes: true,
         }
     }
@@ -255,18 +276,25 @@ impl UIState {
         context: &Context,
         camera: &mut Camera,
         tiles: &Gm<InstancedMesh, PhysicalMaterial>,
+        unused: &[i32],
     ) {
-        // if let Event::MouseMotion { delta, button, .. } = *event {
-        //     if Some(MouseButton::Left) == button {
-        //         let target = camera.target();
-        //         let speed = 0.01 * target.distance(camera.position()) + 0.001;
-        //         // let rot_x = Mat4::from_angle_x(degrees(speed * delta.0));
-        //         // let rot_y = Mat4::from_angle_y(degrees(speed * delta.1));
-        //         // self.global_rot = self.global_rot * rot_x;
-        //         // self.global_rot = self.global_rot * rot_y;
-        //         camera.rotate_around(target, speed * delta.0, speed * delta.1);
-        //     }
-        // }
+        if let Event::MouseMotion { delta, button, .. } = *event {
+            if Some(MouseButton::Left) == button {
+                match self.grab_motion {
+                    GrabMotion::Camera => (),
+                    GrabMotion::LightDir0 => {
+                        self.light_cam0.0 += 0.2 * delta.0;
+                        self.light_cam0.1 += 0.2 * delta.1;
+                        println!("directional0 angles: {:?}", self.light_cam0);
+                    }
+                    GrabMotion::LightDir1 => {
+                        self.light_cam1.0 += 0.2 * delta.0;
+                        self.light_cam1.1 += 0.2 * delta.1;
+                        println!("directional1 angles: {:?}", self.light_cam1);
+                    }
+                }
+            }
+        }
         // track left click presses to identify dragging movements
         if let Event::MousePress {
             button, position, ..
@@ -292,7 +320,24 @@ impl UIState {
                 };
                 self.pressed_on = None;
                 if !moved {
-                    if let Some(pick) = pick(context, camera, position, tiles) {
+                    let x = position.x as u32;
+                    let y = position.y as u32;
+                    if self.number_grid
+                        && x > camera.viewport().width - 600
+                        && y > camera.viewport().height - 200
+                    {
+                        let number =
+                            ((x - 600) / 50 * 5 + 1 + (camera.viewport().height - y) / 40) as i32;
+                        if unused.contains(&number) {
+                            if self.picked_number.is_some() {
+                                self.picked_number = None;
+                                self.has_changes = true;
+                            }
+                        } else {
+                            self.picked_number = Some(number);
+                            self.has_changes = true;
+                        }
+                    } else if let Some(pick) = pick(context, camera, position, tiles) {
                         match pick.geometry_id {
                             0 => self.new_pick = Some(pick.instance_id as usize),
                             _ => unreachable!(),
@@ -429,8 +474,20 @@ fn run(mut model: Model) {
     // numbers on tiles
     let mut numbers = generate_numbers(&model.pentas, &context, font_bytes, font_size);
     // numbers unused in the tiles
-    let mut numbers_unused =
-        generate_unused_numbers(&model.unused, &context, font_bytes, font_size);
+    let mut numbers_2d = generate_numbers_and_bounds(
+        &model
+            .pentas
+            .iter()
+            .flat_map(|p| p.iter().cloned())
+            .chain(model.unused.iter().cloned())
+            .collect_vec(),
+        &context,
+        font_bytes,
+        font_size,
+    );
+    for unused in model.unused {
+        numbers_2d.get_mut(&unused).unwrap().0.material.color = COLOR_BLACK_BROWN;
+    }
 
     // lights
     let light_amb_col = Srgba::WHITE;
@@ -439,6 +496,7 @@ fn run(mut model: Model) {
     let light_dir0 = vec3(0.0, 0.0, -1.0);
     let light_col0 = Srgba::WHITE;
     let mut directional0 = DirectionalLight::new(&context, 0.8, light_col0, light_dir0);
+
     let light_dir1 = vec3(0.0, -1.0, 0.0);
     let light_col1 = COLOR_FIERY_RED;
     let mut directional1 = DirectionalLight::new(&context, 1.0, light_col1, light_dir1);
@@ -563,6 +621,14 @@ fn run(mut model: Model) {
                     {
                         ui_state.has_changes = true;
                     }
+                    if ui
+                        .checkbox(&mut ui_state.number_grid, "Show number grid")
+                        .clicked()
+                        && !ui_state.number_grid
+                    {
+                        ui_state.picked_number = None;
+                        ui_state.has_changes = true;
+                    }
 
                     ui.add(three_d::egui::Separator::default());
                     ui.heading("Rendering");
@@ -608,6 +674,17 @@ fn run(mut model: Model) {
                     );
                     ui.color_edit_button_rgba_unmultiplied(&mut light_dir1_col);
                     ui.checkbox(&mut light_dir1_shadows, "Directional 1 shadows");
+                    ui.radio_value(
+                        &mut ui_state.grab_motion,
+                        GrabMotion::LightDir0,
+                        "Move directional 0",
+                    );
+                    ui.radio_value(
+                        &mut ui_state.grab_motion,
+                        GrabMotion::LightDir1,
+                        "Move directional 1",
+                    );
+                    ui.radio_value(&mut ui_state.grab_motion, GrabMotion::Camera, "Move camera");
                 });
                 panel_width = gui_context.used_rect().width();
             },
@@ -623,7 +700,7 @@ fn run(mut model: Model) {
         camera.set_viewport(viewport);
 
         for event in frame_input.events.iter() {
-            ui_state.handle_event(event, &context, &mut camera, &tiles);
+            ui_state.handle_event(event, &context, &mut camera, &tiles, &model.unused);
         }
         // process all events, then handle picking if any
         ui_state.handle_picking(model.anchor_tile, model.swap_on);
@@ -698,9 +775,18 @@ fn run(mut model: Model) {
             let mut win = true;
 
             for [a, b, c] in TRI_TO_FACETS {
+                let num_a = model.puzzle_state[a];
+                let num_b = model.puzzle_state[b];
+                let num_c = model.puzzle_state[c];
+
                 numbers[a].0.material.color = COLOR_TEXT_BAD;
                 numbers[b].0.material.color = COLOR_TEXT_BAD;
                 numbers[c].0.material.color = COLOR_TEXT_BAD;
+
+                numbers_2d.get_mut(&num_a).unwrap().0.material.color = COLOR_GRAY_BROWN;
+                numbers_2d.get_mut(&num_b).unwrap().0.material.color = COLOR_GRAY_BROWN;
+                numbers_2d.get_mut(&num_c).unwrap().0.material.color = COLOR_GRAY_BROWN;
+
                 if model.puzzle_state[a] + model.puzzle_state[b] + model.puzzle_state[c]
                     != model.goal_sum
                 {
@@ -709,6 +795,10 @@ fn run(mut model: Model) {
                     numbers[a].0.material.color = COLOR_TEXT_GOOD;
                     numbers[b].0.material.color = COLOR_TEXT_GOOD;
                     numbers[c].0.material.color = COLOR_TEXT_GOOD;
+
+                    numbers_2d.get_mut(&num_a).unwrap().0.material.color = COLOR_TEXT_GOOD;
+                    numbers_2d.get_mut(&num_b).unwrap().0.material.color = COLOR_TEXT_GOOD;
+                    numbers_2d.get_mut(&num_c).unwrap().0.material.color = COLOR_TEXT_GOOD;
                 }
             }
 
@@ -720,6 +810,16 @@ fn run(mut model: Model) {
                 tile_colors[ANCHOR_TILE_ID] = COLOR_TILE_0;
             }
 
+            if let Some(num) = ui_state.picked_number {
+                numbers_2d.get_mut(&num).unwrap().0.material.color = COLOR_FIERY_RED;
+                let idx = model
+                    .puzzle_state
+                    .iter()
+                    .find_position(|&n| *n == num)
+                    .unwrap()
+                    .0;
+                numbers[idx].0.material.color = COLOR_FIERY_RED;
+            }
             if let Some(id) = ui_state.picked_tile_id {
                 for num in numbers.iter_mut().skip(id * 5).take(5) {
                     num.0.material.color = COLOR_TEXT_PICK;
@@ -787,16 +887,29 @@ fn run(mut model: Model) {
         dodeca.material.albedo = Srgba::from(dodeca_col);
 
         // camera controls
-        control.handle_events(&mut camera, &mut frame_input.events);
+        if ui_state.grab_motion == GrabMotion::Camera {
+            control.handle_events(&mut camera, &mut frame_input.events);
+        }
 
         // lights controls
         ambient.color = Srgba::from(light_amb_col);
 
         let cam_pos = camera.position();
-        directional0.direction = -cam_pos;
+        directional0.direction = -cam_pos.normalize();
         directional0.color = Srgba::from(light_dir0_col);
-        directional1.direction = (-cam_pos - camera.up()) / 2.;
+
+        directional0.direction =
+            Mat3::from_angle_y(degrees(ui_state.light_cam0.0)) * directional0.direction;
+        directional0.direction =
+            Mat3::from_angle_x(degrees(ui_state.light_cam0.1)) * directional0.direction;
+
+        directional1.direction = ((-cam_pos - camera.up()) / 2.).normalize();
         directional1.color = Srgba::from(light_dir1_col);
+
+        directional1.direction =
+            Mat3::from_angle_y(degrees(ui_state.light_cam1.0)) * directional1.direction;
+        directional1.direction =
+            Mat3::from_angle_x(degrees(ui_state.light_cam1.1)) * directional1.direction;
 
         // shadows
         if light_dir0_shadows {
@@ -837,14 +950,31 @@ fn run(mut model: Model) {
                 for number in &numbers {
                     number.0.render(&camera, &[]);
                 }
-                for (i, (number, (x_min, x_max, _, _))) in numbers_unused.iter_mut().enumerate() {
+                if ui_state.number_grid {
                     let viewport = frame_input.viewport;
-                    number.set_transformation(Mat4::from_translation(Vec3::new(
-                        viewport.width as f32 - 25. - (*x_max - *x_min),
-                        viewport.height as f32 - (40. * (i + 1) as f32),
-                        0.,
-                    )));
-                    number.render(&Camera::new_2d(viewport), &[]);
+                    for (n, (number, (x_min, x_max, _, _))) in numbers_2d.iter_mut() {
+                        let column = (*n - 1) / 5;
+                        let row = (*n - 1) % 5;
+                        number.set_transformation(Mat4::from_translation(Vec3::new(
+                            viewport.width as f32
+                                - (650. - column as f32 * 50.)
+                                - (*x_max - *x_min) / 2.,
+                            viewport.height as f32 - (40. * (row + 1) as f32),
+                            0.,
+                        )));
+                        number.render(&Camera::new_2d(viewport), &[]);
+                    }
+                } else {
+                    let viewport = frame_input.viewport;
+                    for (i, n) in model.unused.iter().enumerate() {
+                        let (number, (x_min, x_max, _, _)) = numbers_2d.get_mut(n).unwrap();
+                        number.set_transformation(Mat4::from_translation(Vec3::new(
+                            viewport.width as f32 - 25. - (*x_max - *x_min),
+                            viewport.height as f32 - (40. * (i + 1) as f32),
+                            0.,
+                        )));
+                        number.render(&Camera::new_2d(viewport), &[]);
+                    }
                 }
                 Ok(())
             })

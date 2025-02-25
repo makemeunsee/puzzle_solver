@@ -48,7 +48,8 @@ Notes:
 
 ## TODOs
 
-* [ ] lights controls: ~~color, intensity, shadows,~~ position
+* [x] number helper (grid)
+* [x] lights controls: color, intensity, shadows, position
 * [x] non solid tiles
 * [ ] ~~darker tile inside~~ too much hassle
 * [x] metallicity control
@@ -74,5 +75,5 @@ Notes:
 * [ ] easy mode: no swap, no highlight
 * [ ] hard mode: no highlight
 * [ ] impossible mode: 13rd facet
-* [ ] perf issues?
+* [ ] fullscreen perf?
 * [x] darker facet back / shadows again?
