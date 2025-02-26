@@ -37,6 +37,11 @@ const COLOR_TEXT_BAD: Srgba = Srgba::BLACK;
 
 const FONT_TYPELIT: &[u8; 7372] = include_bytes!("TypeLightSans_mod.otf");
 
+const GRID_WIDTH: i32 = 650;
+const GRID_COL_WIDTH: i32 = 50;
+const GRID_HEIGHT: i32 = 200;
+const GRID_ROW_HEIGHT: i32 = 40;
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 enum Font {
     TypeLightSans,
@@ -320,14 +325,19 @@ impl UIState {
                 };
                 self.pressed_on = None;
                 if !moved {
-                    let x = position.x as u32;
-                    let y = position.y as u32;
+                    let x = camera.viewport().x;
+                    let y = camera.viewport().y;
+                    let w = camera.viewport().width as i32;
+                    let h = camera.viewport().height as i32;
+                    let mx = position.x as i32 - x - (w - GRID_WIDTH);
+                    let my = position.y as i32 - y - (h - GRID_HEIGHT);
                     if self.number_grid
-                        && x > camera.viewport().width - 600
-                        && y > camera.viewport().height - 200
+                        && (0..=GRID_WIDTH).contains(&mx)
+                        && (0..=GRID_HEIGHT).contains(&my)
                     {
                         let number =
-                            ((x - 600) / 50 * 5 + 1 + (camera.viewport().height - y) / 40) as i32;
+                            mx / GRID_COL_WIDTH * 5 + 1 + (GRID_HEIGHT - my) / GRID_ROW_HEIGHT;
+                        debug!("picked number {number}");
                         if unused.contains(&number) {
                             if self.picked_number.is_some() {
                                 self.picked_number = None;
@@ -956,10 +966,10 @@ fn run(mut model: Model) {
                         let column = (*n - 1) / 5;
                         let row = (*n - 1) % 5;
                         number.set_transformation(Mat4::from_translation(Vec3::new(
-                            viewport.width as f32
-                                - (650. - column as f32 * 50.)
+                            (viewport.width as i32 - (GRID_WIDTH - column * GRID_COL_WIDTH)
+                                + GRID_COL_WIDTH / 2) as f32
                                 - (*x_max - *x_min) / 2.,
-                            viewport.height as f32 - (40. * (row + 1) as f32),
+                            (viewport.height as i32 - (GRID_ROW_HEIGHT * (row + 1))) as f32,
                             0.,
                         )));
                         number.render(&Camera::new_2d(viewport), &[]);
@@ -969,8 +979,10 @@ fn run(mut model: Model) {
                     for (i, n) in model.unused.iter().enumerate() {
                         let (number, (x_min, x_max, _, _)) = numbers_2d.get_mut(n).unwrap();
                         number.set_transformation(Mat4::from_translation(Vec3::new(
-                            viewport.width as f32 - 25. - (*x_max - *x_min),
-                            viewport.height as f32 - (40. * (i + 1) as f32),
+                            (viewport.width as i32 - GRID_COL_WIDTH / 2 + GRID_COL_WIDTH / 2)
+                                as f32
+                                - (*x_max - *x_min) / 2.,
+                            (viewport.height as i32 - (GRID_ROW_HEIGHT * (i as i32 + 1))) as f32,
                             0.,
                         )));
                         number.render(&Camera::new_2d(viewport), &[]);
