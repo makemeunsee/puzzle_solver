@@ -48,6 +48,7 @@ Notes:
 
 ## TODOs
 
+* [ ] fix picking invisible triangle (three-d PR)
 * [x] number helper (grid)
 * [x] lights controls: color, intensity, shadows, position
 * [x] non solid tiles

@@ -37,6 +37,8 @@ const COLOR_TEXT_BAD: Srgba = Srgba::BLACK;
 
 const FONT_TYPELIT: &[u8; 7372] = include_bytes!("TypeLightSans_mod.otf");
 
+const PENTA_ANGLE: f32 = 72.;
+
 const GRID_WIDTH: i32 = 650;
 const GRID_COL_WIDTH: i32 = 50;
 const GRID_HEIGHT: i32 = 200;
@@ -239,8 +241,10 @@ struct UIState {
     picked_tile_id: Option<usize>,
     new_pick: Option<usize>,
     swapping: Option<(usize, usize, f32)>,
-    rotating: [Option<f32>; ICO_TILE_COUNT],
+    rotating: [Option<(f32, bool)>; ICO_TILE_COUNT],
     pressed_on: Option<(f32, f32)>,
+    right_click: bool,
+    rotation: f32,
     font: Font,
     picked_number: Option<i32>,
     number_grid: bool,
@@ -258,6 +262,8 @@ impl UIState {
             swapping: None,
             rotating: [None; ICO_TILE_COUNT],
             pressed_on: None,
+            right_click: false,
+            rotation: 0.,
             font: Font::TypeLightSans,
             picked_number: None,
             number_grid: true,
@@ -277,45 +283,44 @@ impl UIState {
 
     fn handle_event(
         &mut self,
-        event: &Event,
+        event: &mut Event,
         context: &Context,
         camera: &mut Camera,
         tiles: &Gm<InstancedMesh, PhysicalMaterial>,
         unused: &[i32],
     ) {
-        if let Event::MouseMotion { delta, button, .. } = *event {
-            if Some(MouseButton::Left) == button {
-                match self.grab_motion {
-                    GrabMotion::Camera => (),
-                    GrabMotion::LightDir0 => {
-                        self.light_cam0.0 += 0.2 * delta.0;
-                        self.light_cam0.1 += 0.2 * delta.1;
-                        println!("directional0 angles: {:?}", self.light_cam0);
-                    }
-                    GrabMotion::LightDir1 => {
-                        self.light_cam1.0 += 0.2 * delta.0;
-                        self.light_cam1.1 += 0.2 * delta.1;
-                        println!("directional1 angles: {:?}", self.light_cam1);
+        match event {
+            Event::MouseMotion { delta, button, .. } => {
+                if Some(MouseButton::Left) == *button {
+                    match self.grab_motion {
+                        GrabMotion::Camera => (),
+                        GrabMotion::LightDir0 => {
+                            self.light_cam0.0 += 0.2 * delta.0;
+                            self.light_cam0.1 += 0.2 * delta.1;
+                            println!("directional0 angles: {:?}", self.light_cam0);
+                        }
+                        GrabMotion::LightDir1 => {
+                            self.light_cam1.0 += 0.2 * delta.0;
+                            self.light_cam1.1 += 0.2 * delta.1;
+                            println!("directional1 angles: {:?}", self.light_cam1);
+                        }
                     }
                 }
             }
-        }
-        // track left click presses to identify dragging movements
-        if let Event::MousePress {
-            button, position, ..
-        } = *event
-        {
-            if button == MouseButton::Left {
-                self.pressed_on = Some((position.x, position.y));
+            Event::MouseWheel { delta, handled, .. } => {
+                self.rotation = delta.1;
+                *handled = true;
             }
-        }
-        // maybe pick
-        if let Event::MouseRelease {
-            button, position, ..
-        } = *event
-        {
-            // pick only if not a dragging movement
-            if button == MouseButton::Left {
+            // track left click presses to identify dragging movements
+            Event::MousePress { position, .. } => {
+                self.pressed_on = Some((position.x, position.y));
+                self.right_click = false;
+            }
+            // maybe pick
+            Event::MouseRelease {
+                button, position, ..
+            } => {
+                // pick only if not a dragging movement
                 let moved = if let Some((x, y)) = self.pressed_on {
                     let delta_x = position.x - x;
                     let delta_y = position.y - y;
@@ -331,36 +336,39 @@ impl UIState {
                     let h = camera.viewport().height as i32;
                     let mx = position.x as i32 - x - (w - GRID_WIDTH);
                     let my = position.y as i32 - y - (h - GRID_HEIGHT);
-                    if self.number_grid
+                    if MouseButton::Left == *button
+                        && self.number_grid
                         && (0..=GRID_WIDTH).contains(&mx)
                         && (0..=GRID_HEIGHT).contains(&my)
                     {
                         let number =
                             mx / GRID_COL_WIDTH * 5 + 1 + (GRID_HEIGHT - my) / GRID_ROW_HEIGHT;
                         debug!("picked number {number}");
-                        if unused.contains(&number) {
-                            if self.picked_number.is_some() {
-                                self.picked_number = None;
-                                self.has_changes = true;
-                            }
+                        if unused.contains(&number) && self.picked_number.is_some()
+                            || self.picked_number == Some(number)
+                        {
+                            self.picked_number = None;
+                            self.has_changes = true;
                         } else {
                             self.picked_number = Some(number);
                             self.has_changes = true;
                         }
-                    } else if let Some(pick) = pick(context, camera, position, tiles) {
+                    } else if let Some(pick) = pick(context, camera, *position, tiles) {
                         match pick.geometry_id {
-                            0 => self.new_pick = Some(pick.instance_id as usize),
+                            0 => {
+                                self.new_pick = Some(pick.instance_id as usize);
+                                self.right_click = MouseButton::Right == *button;
+                            }
                             _ => unreachable!(),
                         };
-                    } else {
+                    } else if MouseButton::Left == *button && self.picked_tile_id.is_some() {
                         // picked out -> unpick current
-                        if self.picked_tile_id.is_some() {
-                            self.picked_tile_id = None;
-                            self.has_changes = true;
-                        }
+                        self.picked_tile_id = None;
+                        self.has_changes = true;
                     }
                 }
             }
+            _ => (),
         }
     }
 
@@ -369,15 +377,10 @@ impl UIState {
             if !anchor_on || pick_id != ANCHOR_TILE_ID {
                 self.picked_tile_id = match self.picked_tile_id {
                     // picked the same tile -> rotate it
-                    Some(id) if id == pick_id => {
-                        if (self.rotating[id] as Option<f32>).is_none() {
-                            self.rotating[id] = Some(0.);
-                        }
-                        Some(id)
-                    }
+                    Some(id) if id == pick_id => Some(id),
 
                     // picked another tile -> swap them
-                    Some(id) if swap_on => {
+                    Some(id) if swap_on && self.right_click => {
                         if self.swapping.is_none() {
                             self.swapping = Some((id, pick_id, 0.));
                             self.has_changes = true;
@@ -394,6 +397,14 @@ impl UIState {
             }
         }
         self.new_pick = None;
+        if self.rotation != 0. {
+            if let Some(id) = self.picked_tile_id {
+                if (self.rotating[id] as Option<_>).is_none() {
+                    self.rotating[id] = Some((0., self.rotation > 0.));
+                }
+            }
+            self.rotation = 0.;
+        }
     }
 }
 
@@ -414,7 +425,7 @@ fn run(mut model: Model) {
         up.truncate().normalize(),
         degrees(45.0),
         0.1,
-        100.0,
+        11.0,
     );
 
     // tiles 3D objects
@@ -514,7 +525,7 @@ fn run(mut model: Model) {
     // rendering & animation
     let mut trans_factor = 0.05;
     let tile_anim_speed = 10.0;
-    let mut thick = true;
+    let mut thick = false;
     let mut tile_colors = vec![COLOR_TILE_BASE; ICO_TILE_COUNT];
     tile_colors[ANCHOR_TILE_ID] = COLOR_TILE_0;
     let mut tile_col = [
@@ -648,7 +659,14 @@ fn run(mut model: Model) {
                     let dodeca_color_label = ui.label("Dodeca color");
                     ui.color_edit_button_rgba_unmultiplied(&mut dodeca_col)
                         .labelled_by(dodeca_color_label.id);
-                    ui.checkbox(&mut thick, "Thick tiles");
+                    if ui.checkbox(&mut thick, "Thick tiles").clicked() {
+                        if thick {
+                            camera.set_perspective_projection(degrees(45.0), 0.1, 100.0);
+                        } else {
+                            // just enough so the far tiles are not drawn at all and cannot be picked through the gaps
+                            camera.set_perspective_projection(degrees(45.0), 0.1, 11.);
+                        }
+                    }
                     let tile_color_label = ui.label("Tile color");
                     if ui
                         .color_edit_button_rgba_unmultiplied(&mut tile_col)
@@ -709,7 +727,7 @@ fn run(mut model: Model) {
         };
         camera.set_viewport(viewport);
 
-        for event in frame_input.events.iter() {
+        for event in frame_input.events.iter_mut() {
             ui_state.handle_event(event, &context, &mut camera, &tiles, &model.unused);
         }
         // process all events, then handle picking if any
@@ -719,23 +737,28 @@ fn run(mut model: Model) {
         for (i, rot_opt) in ui_state.rotating.iter_mut().enumerate() {
             match rot_opt {
                 None => (),
-                Some(rot) => {
+                Some((rot, clockwise)) => {
+                    let clockwise = *clockwise;
                     let next_rot = f32::min(
-                        72.0,
-                        *rot + (7.2 * frame_input.elapsed_time as f32 * tile_anim_speed / 200.0),
+                        PENTA_ANGLE,
+                        *rot + (PENTA_ANGLE / 10.
+                            * frame_input.elapsed_time as f32
+                            * tile_anim_speed
+                            / 200.0),
                     );
-                    *rot_opt = if next_rot == 72. {
+                    *rot_opt = if next_rot == PENTA_ANGLE {
                         None
                     } else {
-                        Some(next_rot)
+                        Some((next_rot, clockwise))
                     };
 
-                    if next_rot == 72.0 {
-                        let offset = i * 5;
+                    if next_rot == PENTA_ANGLE {
+                        let base_offset = i * 5;
                         for j in 0..4 {
+                            let j = if clockwise { j } else { 4 - j };
                             let new_j = (j + 1) % 5;
-                            let offset0 = offset + j;
-                            let offset1 = offset + new_j;
+                            let offset0 = base_offset + j;
+                            let offset1 = base_offset + new_j;
                             model.puzzle_state.swap(offset0, offset1);
                             numbers.swap(offset0, offset1);
                             let tmp = numbers[offset0].2;
@@ -852,8 +875,11 @@ fn run(mut model: Model) {
             .iter()
             .enumerate()
             .map(|(i, mat)| {
-                let rot_mat = if let Some(rot) = ui_state.rotating[i] {
-                    Mat4::from_axis_angle(TILE0_FACET0_CENTER.normalize(), degrees(rot))
+                let rot_mat = if let Some((rot, clockwise)) = ui_state.rotating[i] {
+                    Mat4::from_axis_angle(
+                        TILE0_FACET0_CENTER.normalize(),
+                        degrees(if clockwise { rot } else { -rot }),
+                    )
                 } else {
                     Mat4::identity()
                 };
@@ -922,21 +948,13 @@ fn run(mut model: Model) {
             Mat3::from_angle_x(degrees(ui_state.light_cam1.1)) * directional1.direction;
 
         // shadows
-        if light_dir0_shadows {
-            if thick {
-                directional0.generate_shadow_map(1024, &tiles);
-            } else {
-                directional0.generate_shadow_map(1024, &thin_tiles);
-            }
+        if light_dir0_shadows && thick {
+            directional0.generate_shadow_map(1024, &tiles);
         } else {
             directional0.clear_shadow_map();
         }
-        if light_dir1_shadows {
-            if thick {
-                directional1.generate_shadow_map(1024, &tiles);
-            } else {
-                directional1.generate_shadow_map(1024, &thin_tiles);
-            }
+        if light_dir1_shadows && thick {
+            directional1.generate_shadow_map(1024, &tiles);
         } else {
             directional1.clear_shadow_map();
         }
