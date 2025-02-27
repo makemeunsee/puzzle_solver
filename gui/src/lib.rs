@@ -14,16 +14,16 @@ use shapes::{
 use solvers::dodeca::{triangles_to_pentas_shuffled, TRI_TO_FACETS};
 use three_d::{
     core::Context, degrees, pick, vec3, AmbientLight, Attenuation, Camera, ClearState,
-    ColorMaterial, CpuMaterial, Cull, DirectionalLight, Event, FrameOutput, FreeOrbitControl,
-    Geometry, Gm, InnerSpace, InstancedMesh, Instances, Light, Mat3, Mat4, Mesh, MouseButton,
-    Object, PhysicalMaterial, PointLight, RendererError, SquareMatrix, Srgba, TextGenerator,
-    TextLayoutOptions, Vec3, Vec4, Viewer, Viewport, Window, WindowSettings,
+    ColorMaterial, CpuMaterial, Cull, DirectionalLight, Event, FrameOutput, FreeOrbitControl, Gm,
+    InnerSpace, InstancedMesh, Instances, Light, Mat4, Mesh, MouseButton, Object, PhysicalMaterial,
+    PointLight, RendererError, SquareMatrix, Srgba, TextGenerator, TextLayoutOptions, Vec3, Vec4,
+    Viewer, Viewport, Window, WindowSettings,
 };
 
 const COLOR_LIGHT_BLUE: Srgba = Srgba::new_opaque(100, 150, 255);
-const COLOR_LIGHT_GOLD: Srgba = Srgba::new_opaque(220, 220, 150);
+const COLOR_LIGHT_GOLD: Srgba = Srgba::new_opaque(220, 210, 140);
 const COLOR_NEON_GREEN: Srgba = Srgba::new_opaque(100, 255, 100);
-const COLOR_FIERY_RED: Srgba = Srgba::new_opaque(255, 50, 0);
+const COLOR_FIERY_RED: Srgba = Srgba::new_opaque(255, 80, 0);
 const COLOR_GOLD: Srgba = Srgba::new_opaque(212, 175, 55);
 const COLOR_YELLOW: Srgba = Srgba::new_opaque(255, 226, 0);
 const COLOR_GRAY_BROWN: Srgba = Srgba::new_opaque(94, 94, 80);
@@ -231,13 +231,6 @@ impl Model {
     }
 }
 
-#[derive(PartialEq, Eq)]
-enum GrabMotion {
-    Camera,
-    PointLight,
-    DirectionalLight,
-}
-
 struct UIState {
     picked_tile_id: Option<usize>,
     new_pick: Option<usize>,
@@ -249,9 +242,6 @@ struct UIState {
     font: Font,
     picked_number: Option<i32>,
     number_grid: bool,
-    grab_motion: GrabMotion,
-    light_cam0: (f32, f32),
-    light_cam1: (f32, f32),
     has_changes: bool,
 }
 
@@ -268,9 +258,6 @@ impl UIState {
             font: Font::TypeLightSans,
             picked_number: None,
             number_grid: true,
-            grab_motion: GrabMotion::Camera,
-            light_cam0: (0., 0.),
-            light_cam1: (0., 0.),
             has_changes: true,
         }
     }
@@ -291,23 +278,6 @@ impl UIState {
         unused: &[i32],
     ) {
         match event {
-            Event::MouseMotion { delta, button, .. } => {
-                if Some(MouseButton::Left) == *button {
-                    match self.grab_motion {
-                        GrabMotion::Camera => (),
-                        GrabMotion::PointLight => {
-                            self.light_cam0.0 += 0.2 * delta.0;
-                            self.light_cam0.1 += 0.2 * delta.1;
-                            println!("point_light angles: {:?}", self.light_cam0);
-                        }
-                        GrabMotion::DirectionalLight => {
-                            self.light_cam1.0 += 0.2 * delta.0;
-                            self.light_cam1.1 += 0.2 * delta.1;
-                            println!("directional1 angles: {:?}", self.light_cam1);
-                        }
-                    }
-                }
-            }
             Event::MouseWheel { delta, handled, .. } => {
                 self.rotation = delta.1;
                 *handled = true;
@@ -443,13 +413,6 @@ fn run(mut model: Model) {
         ..Default::default()
     };
 
-    let dodeca_mesh = Polyhedron::regular_dodecahedron().into_mesh();
-    let mut dodeca = Gm::new(
-        Mesh::new(&context, &dodeca_mesh),
-        PhysicalMaterial::new(&context, &tile_mat),
-    );
-    dodeca.material.albedo = COLOR_GOLD;
-
     let tile = Polyhedron::ico_tile();
     const THIN_TILE_INDEX_COUNT: usize = 30;
     let thin_tile = Polyhedron {
@@ -474,21 +437,9 @@ fn run(mut model: Model) {
     };
     let mut thin_tiles = Gm::new(
         InstancedMesh::new(&context, &thin_instances, &thin_tile_mesh),
-        PhysicalMaterial::default(),
-    );
-
-    let tile_mesh = tile.into_mesh();
-
-    let instances = Instances {
-        transformations: vec![],
-        colors: Some(vec![Srgba::GREEN; ICO_TILE_COUNT]),
-        ..Default::default()
-    };
-    let mut tiles = Gm::new(
-        InstancedMesh::new(&context, &instances, &tile_mesh),
         PhysicalMaterial::new(&context, &tile_mat),
     );
-    tiles.material.render_states.cull = Cull::Back;
+    thin_tiles.material.render_states.cull = Cull::Back;
 
     let mut ui_state = UIState::new();
     let (font_bytes, font_size) = font_bytes_and_size(ui_state.font);
@@ -511,7 +462,7 @@ fn run(mut model: Model) {
     }
 
     // lights
-    let mut ambient = AmbientLight::new(&context, 0.35, Srgba::WHITE);
+    let ambient = AmbientLight::new(&context, 0.35, Srgba::WHITE);
 
     let mut point_light = PointLight::new(
         &context,
@@ -529,51 +480,16 @@ fn run(mut model: Model) {
         DirectionalLight::new(&context, 0.5, COLOR_FIERY_RED, vec3(0.0, -1.0, 0.0));
 
     // rendering & animation
-    let mut trans_factor = 0.05;
+    let trans_factor = 0.05;
     let tile_anim_speed = 10.0;
-    let mut thick = false;
     let mut tile_colors = vec![COLOR_TILE_BASE; ICO_TILE_COUNT];
     tile_colors[ANCHOR_TILE_ID] = COLOR_TILE_0;
-    let mut tile_col = [
-        COLOR_TILE_BASE.r as f32 / 255.,
-        COLOR_TILE_BASE.g as f32 / 255.,
-        COLOR_TILE_BASE.b as f32 / 255.,
-        1.,
-    ];
-    let mut show_dodeca = false;
-    let mut dodeca_col = [
-        dodeca.material.albedo.r as f32 / 255.,
-        dodeca.material.albedo.g as f32 / 255.,
-        dodeca.material.albedo.b as f32 / 255.,
-        1.,
-    ];
 
     // camera control
     let mut control = FreeOrbitControl::new(camera.target(), 1.0, 50.0);
 
     let mut gui = three_d::GUI::new(&context);
     let mut seed_buffer = format!("{}", model.seed);
-
-    // lights control vars
-    let mut ambient_color = [
-        ambient.color.r as f32 / 255.,
-        ambient.color.g as f32 / 255.,
-        ambient.color.b as f32 / 255.,
-        1.,
-    ];
-    let mut point_color = [
-        point_light.color.r as f32 / 255.,
-        point_light.color.g as f32 / 255.,
-        point_light.color.b as f32 / 255.,
-        1.,
-    ];
-    let mut directional_color = [
-        directional_light.color.r as f32 / 255.,
-        directional_light.color.g as f32 / 255.,
-        directional_light.color.b as f32 / 255.,
-        1.,
-    ];
-    let mut shadows = true;
 
     window.render_loop(move |mut frame_input| {
         let mut panel_width = 0.0;
@@ -655,61 +571,6 @@ fn run(mut model: Model) {
                         ui_state.picked_number = None;
                         ui_state.has_changes = true;
                     }
-
-                    ui.add(three_d::egui::Separator::default());
-                    ui.heading("Rendering");
-
-                    ui.add(Slider::new(&mut trans_factor, -2.25..=1.).text("tile break out"));
-                    ui.checkbox(&mut show_dodeca, "Put a dodecahedron inside");
-                    let dodeca_color_label = ui.label("Dodeca color");
-                    ui.color_edit_button_rgba_unmultiplied(&mut dodeca_col)
-                        .labelled_by(dodeca_color_label.id);
-                    ui.checkbox(&mut thick, "Thick tiles");
-                    let tile_color_label = ui.label("Tile color");
-                    if ui
-                        .color_edit_button_rgba_unmultiplied(&mut tile_col)
-                        .labelled_by(tile_color_label.id)
-                        .changed()
-                    {
-                        ui_state.has_changes = true;
-                    }
-
-                    ui.add(three_d::egui::Separator::default());
-                    ui.heading("Lighting");
-                    ui.add(
-                        Slider::new(&mut tiles.material.metallic, 0.0..=1.0)
-                            .text("Tile metallicity"),
-                    );
-                    ui.add(
-                        Slider::new(&mut tiles.material.roughness, 0.0..=1.0)
-                            .text("Tile roughness"),
-                    );
-                    ui.add(
-                        Slider::new(&mut ambient.intensity, 0.0..=1.0).text("Ambient intensity"),
-                    );
-                    ui.color_edit_button_rgba_unmultiplied(&mut ambient_color);
-                    ui.add(
-                        Slider::new(&mut point_light.intensity, 0.0..=1.0)
-                            .text("Point light intensity"),
-                    );
-                    ui.color_edit_button_rgba_unmultiplied(&mut point_color);
-                    ui.add(
-                        Slider::new(&mut directional_light.intensity, 0.0..=1.0)
-                            .text("Directional light intensity"),
-                    );
-                    ui.color_edit_button_rgba_unmultiplied(&mut directional_color);
-                    ui.checkbox(&mut shadows, "Shadows");
-                    ui.radio_value(
-                        &mut ui_state.grab_motion,
-                        GrabMotion::PointLight,
-                        "Move point light",
-                    );
-                    ui.radio_value(
-                        &mut ui_state.grab_motion,
-                        GrabMotion::DirectionalLight,
-                        "Move directional light",
-                    );
-                    ui.radio_value(&mut ui_state.grab_motion, GrabMotion::Camera, "Move camera");
                 });
                 panel_width = gui_context.used_rect().width();
             },
@@ -725,8 +586,7 @@ fn run(mut model: Model) {
         camera.set_viewport(viewport);
 
         for event in frame_input.events.iter_mut() {
-            let tiles = if thick { &tiles } else { &thin_tiles };
-            ui_state.handle_event(event, &context, &mut camera, tiles, &model.unused);
+            ui_state.handle_event(event, &context, &mut camera, &thin_tiles, &model.unused);
         }
         // process all events, then handle picking if any
         ui_state.handle_picking(model.anchor_tile, model.swap_on);
@@ -834,7 +694,7 @@ fn run(mut model: Model) {
             }
 
             for tile_color in &mut tile_colors {
-                *tile_color = Srgba::from(tile_col);
+                *tile_color = COLOR_TILE_BASE;
             }
 
             if model.anchor_tile {
@@ -906,50 +766,18 @@ fn run(mut model: Model) {
         }
 
         // apply tile transformations to tiles
-        tiles.set_instances(&Instances {
-            transformations: tile_transformations.clone(),
-            colors: Some(tile_colors.clone()),
-            ..Default::default()
-        });
         thin_tiles.set_instances(&Instances {
             transformations: tile_transformations,
             colors: Some(tile_colors.clone()),
             ..Default::default()
         });
 
-        // dodeca color
-        dodeca.material.albedo = Srgba::from(dodeca_col);
+        control.handle_events(&mut camera, &mut frame_input.events);
 
-        // camera controls
-        if ui_state.grab_motion == GrabMotion::Camera {
-            control.handle_events(&mut camera, &mut frame_input.events);
-        }
-
-        // lights controls
-        ambient.color = Srgba::from(ambient_color);
-
+        // fix lights to camera
         let cam_pos = camera.position();
         point_light.position = 3. * cam_pos.normalize();
-        point_light.color = Srgba::from(point_color);
-
-        point_light.position =
-            Mat3::from_angle_y(degrees(ui_state.light_cam0.0)) * point_light.position;
-        point_light.position =
-            Mat3::from_angle_x(degrees(ui_state.light_cam0.1)) * point_light.position;
-
         directional_light.direction = ((-cam_pos - camera.up()) / 2.).normalize();
-        directional_light.color = Srgba::from(directional_color);
-
-        directional_light.direction =
-            Mat3::from_angle_y(degrees(ui_state.light_cam1.0)) * directional_light.direction;
-        directional_light.direction =
-            Mat3::from_angle_x(degrees(ui_state.light_cam1.1)) * directional_light.direction;
-
-        if shadows && thick {
-            directional_light.generate_shadow_map(1024, &tiles);
-        } else {
-            directional_light.clear_shadow_map();
-        }
 
         let lights = [&ambient as &dyn Light, &point_light, &directional_light];
 
@@ -959,14 +787,7 @@ fn run(mut model: Model) {
 
         screen
             .write::<RendererError>(|| {
-                if show_dodeca {
-                    dodeca.render(&camera, &lights);
-                }
-                if thick {
-                    tiles.render(&camera, &lights);
-                } else {
-                    thin_tiles.render_with_material(&tiles.material, &camera, &lights);
-                }
+                thin_tiles.render(&camera, &lights);
                 for number in &numbers {
                     number.0.render(&camera, &[]);
                 }
