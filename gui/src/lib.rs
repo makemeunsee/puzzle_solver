@@ -13,11 +13,11 @@ use shapes::{
 };
 use solvers::dodeca::{triangles_to_pentas_shuffled, TRI_TO_FACETS};
 use three_d::{
-    core::Context, degrees, pick, vec3, AmbientLight, Camera, ClearState, ColorMaterial,
-    CpuMaterial, Cull, DirectionalLight, Event, FrameOutput, FreeOrbitControl, Geometry, Gm,
-    InnerSpace, InstancedMesh, Instances, Light, Mat3, Mat4, Mesh, MouseButton, Object,
-    PhysicalMaterial, RendererError, SquareMatrix, Srgba, TextGenerator, TextLayoutOptions, Vec3,
-    Vec4, Viewer, Viewport, Window, WindowSettings,
+    core::Context, degrees, pick, vec3, AmbientLight, Attenuation, Camera, ClearState,
+    ColorMaterial, CpuMaterial, Cull, DirectionalLight, Event, FrameOutput, FreeOrbitControl,
+    Geometry, Gm, InnerSpace, InstancedMesh, Instances, Light, Mat3, Mat4, Mesh, MouseButton,
+    Object, PhysicalMaterial, PointLight, RendererError, SquareMatrix, Srgba, TextGenerator,
+    TextLayoutOptions, Vec3, Vec4, Viewer, Viewport, Window, WindowSettings,
 };
 
 const COLOR_LIGHT_BLUE: Srgba = Srgba::new_opaque(100, 150, 255);
@@ -25,11 +25,12 @@ const COLOR_LIGHT_GOLD: Srgba = Srgba::new_opaque(220, 220, 150);
 const COLOR_NEON_GREEN: Srgba = Srgba::new_opaque(100, 255, 100);
 const COLOR_FIERY_RED: Srgba = Srgba::new_opaque(255, 50, 0);
 const COLOR_GOLD: Srgba = Srgba::new_opaque(212, 175, 55);
+const COLOR_YELLOW: Srgba = Srgba::new_opaque(255, 226, 0);
 const COLOR_GRAY_BROWN: Srgba = Srgba::new_opaque(94, 94, 80);
 const COLOR_BLACK_BROWN: Srgba = Srgba::new_opaque(30, 30, 25);
 
-const COLOR_TILE_0: Srgba = Srgba::new_opaque(150, 90, 0);
-const COLOR_TILE_BASE: Srgba = COLOR_GOLD;
+const COLOR_TILE_0: Srgba = Srgba::new_opaque(220, 180, 0);
+const COLOR_TILE_BASE: Srgba = COLOR_YELLOW;
 const COLOR_TILE_PICK: Srgba = COLOR_GRAY_BROWN;
 const COLOR_TEXT_PICK: Srgba = COLOR_NEON_GREEN;
 const COLOR_TEXT_GOOD: Srgba = COLOR_LIGHT_GOLD;
@@ -233,8 +234,8 @@ impl Model {
 #[derive(PartialEq, Eq)]
 enum GrabMotion {
     Camera,
-    LightDir0,
-    LightDir1,
+    PointLight,
+    DirectionalLight,
 }
 
 struct UIState {
@@ -294,12 +295,12 @@ impl UIState {
                 if Some(MouseButton::Left) == *button {
                     match self.grab_motion {
                         GrabMotion::Camera => (),
-                        GrabMotion::LightDir0 => {
+                        GrabMotion::PointLight => {
                             self.light_cam0.0 += 0.2 * delta.0;
                             self.light_cam0.1 += 0.2 * delta.1;
-                            println!("directional0 angles: {:?}", self.light_cam0);
+                            println!("point_light angles: {:?}", self.light_cam0);
                         }
-                        GrabMotion::LightDir1 => {
+                        GrabMotion::DirectionalLight => {
                             self.light_cam1.0 += 0.2 * delta.0;
                             self.light_cam1.1 += 0.2 * delta.1;
                             println!("directional1 angles: {:?}", self.light_cam1);
@@ -425,7 +426,7 @@ fn run(mut model: Model) {
         up.truncate().normalize(),
         degrees(45.0),
         0.1,
-        11.0,
+        50.0,
     );
 
     // tiles 3D objects
@@ -473,9 +474,8 @@ fn run(mut model: Model) {
     };
     let mut thin_tiles = Gm::new(
         InstancedMesh::new(&context, &thin_instances, &thin_tile_mesh),
-        PhysicalMaterial::new(&context, &tile_mat),
+        PhysicalMaterial::default(),
     );
-    thin_tiles.material.render_states.cull = Cull::Back;
 
     let tile_mesh = tile.into_mesh();
 
@@ -511,16 +511,22 @@ fn run(mut model: Model) {
     }
 
     // lights
-    let light_amb_col = Srgba::WHITE;
-    let mut ambient = AmbientLight::new(&context, 0.2, light_amb_col);
+    let mut ambient = AmbientLight::new(&context, 0.35, Srgba::WHITE);
 
-    let light_dir0 = vec3(0.0, 0.0, -1.0);
-    let light_col0 = Srgba::WHITE;
-    let mut directional0 = DirectionalLight::new(&context, 0.8, light_col0, light_dir0);
+    let mut point_light = PointLight::new(
+        &context,
+        0.8,
+        Srgba::WHITE,
+        vec3(0.0, 0.0, -1.0),
+        Attenuation {
+            constant: 0.5,
+            linear: 0.05,
+            quadratic: 0.005,
+        },
+    );
 
-    let light_dir1 = vec3(0.0, -1.0, 0.0);
-    let light_col1 = COLOR_FIERY_RED;
-    let mut directional1 = DirectionalLight::new(&context, 1.0, light_col1, light_dir1);
+    let mut directional_light =
+        DirectionalLight::new(&context, 0.5, COLOR_FIERY_RED, vec3(0.0, -1.0, 0.0));
 
     // rendering & animation
     let mut trans_factor = 0.05;
@@ -549,26 +555,25 @@ fn run(mut model: Model) {
     let mut seed_buffer = format!("{}", model.seed);
 
     // lights control vars
-    let mut light_amb_col = [
-        light_amb_col.r as f32 / 255.,
-        light_amb_col.g as f32 / 255.,
-        light_amb_col.b as f32 / 255.,
+    let mut ambient_color = [
+        ambient.color.r as f32 / 255.,
+        ambient.color.g as f32 / 255.,
+        ambient.color.b as f32 / 255.,
         1.,
     ];
-    let mut light_dir0_col = [
-        light_col0.r as f32 / 255.,
-        light_col0.g as f32 / 255.,
-        light_col0.b as f32 / 255.,
+    let mut point_color = [
+        point_light.color.r as f32 / 255.,
+        point_light.color.g as f32 / 255.,
+        point_light.color.b as f32 / 255.,
         1.,
     ];
-    let mut light_dir1_col = [
-        light_col1.r as f32 / 255.,
-        light_col1.g as f32 / 255.,
-        light_col1.b as f32 / 255.,
+    let mut directional_color = [
+        directional_light.color.r as f32 / 255.,
+        directional_light.color.g as f32 / 255.,
+        directional_light.color.b as f32 / 255.,
         1.,
     ];
-    let mut light_dir0_shadows = true;
-    let mut light_dir1_shadows = true;
+    let mut shadows = true;
 
     window.render_loop(move |mut frame_input| {
         let mut panel_width = 0.0;
@@ -659,14 +664,7 @@ fn run(mut model: Model) {
                     let dodeca_color_label = ui.label("Dodeca color");
                     ui.color_edit_button_rgba_unmultiplied(&mut dodeca_col)
                         .labelled_by(dodeca_color_label.id);
-                    if ui.checkbox(&mut thick, "Thick tiles").clicked() {
-                        if thick {
-                            camera.set_perspective_projection(degrees(45.0), 0.1, 100.0);
-                        } else {
-                            // just enough so the far tiles are not drawn at all and cannot be picked through the gaps
-                            camera.set_perspective_projection(degrees(45.0), 0.1, 11.);
-                        }
-                    }
+                    ui.checkbox(&mut thick, "Thick tiles");
                     let tile_color_label = ui.label("Tile color");
                     if ui
                         .color_edit_button_rgba_unmultiplied(&mut tile_col)
@@ -689,28 +687,27 @@ fn run(mut model: Model) {
                     ui.add(
                         Slider::new(&mut ambient.intensity, 0.0..=1.0).text("Ambient intensity"),
                     );
-                    ui.color_edit_button_rgba_unmultiplied(&mut light_amb_col);
+                    ui.color_edit_button_rgba_unmultiplied(&mut ambient_color);
                     ui.add(
-                        Slider::new(&mut directional0.intensity, 0.0..=1.0)
-                            .text("Directional 0 intensity"),
+                        Slider::new(&mut point_light.intensity, 0.0..=1.0)
+                            .text("Point light intensity"),
                     );
-                    ui.color_edit_button_rgba_unmultiplied(&mut light_dir0_col);
-                    ui.checkbox(&mut light_dir0_shadows, "Directional 0 shadows");
+                    ui.color_edit_button_rgba_unmultiplied(&mut point_color);
                     ui.add(
-                        Slider::new(&mut directional1.intensity, 0.0..=1.0)
-                            .text("Directional 1 intensity"),
+                        Slider::new(&mut directional_light.intensity, 0.0..=1.0)
+                            .text("Directional light intensity"),
                     );
-                    ui.color_edit_button_rgba_unmultiplied(&mut light_dir1_col);
-                    ui.checkbox(&mut light_dir1_shadows, "Directional 1 shadows");
+                    ui.color_edit_button_rgba_unmultiplied(&mut directional_color);
+                    ui.checkbox(&mut shadows, "Shadows");
                     ui.radio_value(
                         &mut ui_state.grab_motion,
-                        GrabMotion::LightDir0,
-                        "Move directional 0",
+                        GrabMotion::PointLight,
+                        "Move point light",
                     );
                     ui.radio_value(
                         &mut ui_state.grab_motion,
-                        GrabMotion::LightDir1,
-                        "Move directional 1",
+                        GrabMotion::DirectionalLight,
+                        "Move directional light",
                     );
                     ui.radio_value(&mut ui_state.grab_motion, GrabMotion::Camera, "Move camera");
                 });
@@ -728,7 +725,8 @@ fn run(mut model: Model) {
         camera.set_viewport(viewport);
 
         for event in frame_input.events.iter_mut() {
-            ui_state.handle_event(event, &context, &mut camera, &tiles, &model.unused);
+            let tiles = if thick { &tiles } else { &thin_tiles };
+            ui_state.handle_event(event, &context, &mut camera, tiles, &model.unused);
         }
         // process all events, then handle picking if any
         ui_state.handle_picking(model.anchor_tile, model.swap_on);
@@ -928,38 +926,32 @@ fn run(mut model: Model) {
         }
 
         // lights controls
-        ambient.color = Srgba::from(light_amb_col);
+        ambient.color = Srgba::from(ambient_color);
 
         let cam_pos = camera.position();
-        directional0.direction = -cam_pos.normalize();
-        directional0.color = Srgba::from(light_dir0_col);
+        point_light.position = 3. * cam_pos.normalize();
+        point_light.color = Srgba::from(point_color);
 
-        directional0.direction =
-            Mat3::from_angle_y(degrees(ui_state.light_cam0.0)) * directional0.direction;
-        directional0.direction =
-            Mat3::from_angle_x(degrees(ui_state.light_cam0.1)) * directional0.direction;
+        point_light.position =
+            Mat3::from_angle_y(degrees(ui_state.light_cam0.0)) * point_light.position;
+        point_light.position =
+            Mat3::from_angle_x(degrees(ui_state.light_cam0.1)) * point_light.position;
 
-        directional1.direction = ((-cam_pos - camera.up()) / 2.).normalize();
-        directional1.color = Srgba::from(light_dir1_col);
+        directional_light.direction = ((-cam_pos - camera.up()) / 2.).normalize();
+        directional_light.color = Srgba::from(directional_color);
 
-        directional1.direction =
-            Mat3::from_angle_y(degrees(ui_state.light_cam1.0)) * directional1.direction;
-        directional1.direction =
-            Mat3::from_angle_x(degrees(ui_state.light_cam1.1)) * directional1.direction;
+        directional_light.direction =
+            Mat3::from_angle_y(degrees(ui_state.light_cam1.0)) * directional_light.direction;
+        directional_light.direction =
+            Mat3::from_angle_x(degrees(ui_state.light_cam1.1)) * directional_light.direction;
 
-        // shadows
-        if light_dir0_shadows && thick {
-            directional0.generate_shadow_map(1024, &tiles);
+        if shadows && thick {
+            directional_light.generate_shadow_map(1024, &tiles);
         } else {
-            directional0.clear_shadow_map();
-        }
-        if light_dir1_shadows && thick {
-            directional1.generate_shadow_map(1024, &tiles);
-        } else {
-            directional1.clear_shadow_map();
+            directional_light.clear_shadow_map();
         }
 
-        let lights = [&ambient as &dyn Light, &directional0, &directional1];
+        let lights = [&ambient as &dyn Light, &point_light, &directional_light];
 
         // draw
         let screen = frame_input.screen();
