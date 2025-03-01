@@ -186,7 +186,16 @@ impl Model {
         let mut rng = SmallRng::seed_from_u64(SEED0);
         let triplets = *triplets;
         debug!("solution:\n{:?}", triplets);
+
         let pentas = triangles_to_pentas_shuffled(&triplets, &mut rng, true, true);
+
+        // debug: only 1 rot to solution
+        // let mut pentas = triangles_to_pentas_shuffled(&triplets, &mut rng, false, false);
+        // let single_rot = &mut pentas[0];
+        // for i in 0..4 {
+        //     let new_i = (i + 1) % 5;
+        //     single_rot.swap(i, new_i);
+        // }
 
         // debug values: value is facet id
         // let pentas = (0..60)
@@ -243,6 +252,7 @@ struct UIState {
     picked_number: Option<i32>,
     number_grid: bool,
     has_changes: bool,
+    win_anim: Option<f32>,
 }
 
 impl UIState {
@@ -259,6 +269,7 @@ impl UIState {
             picked_number: None,
             number_grid: true,
             has_changes: true,
+            win_anim: None,
         }
     }
 
@@ -267,6 +278,7 @@ impl UIState {
         self.swapping = None;
         self.rotating = [None; ICO_TILE_COUNT];
         self.has_changes = true;
+        self.win_anim = None;
     }
 
     fn handle_event(
@@ -315,16 +327,15 @@ impl UIState {
                         let number =
                             mx / GRID_COL_WIDTH * 5 + 1 + (GRID_HEIGHT - my) / GRID_ROW_HEIGHT;
                         debug!("picked number {number}");
-                        if unused.contains(&number) && self.picked_number.is_some()
-                            || self.picked_number == Some(number)
-                        {
+                        if unused.contains(&number) || self.picked_number == Some(number) {
+                            self.has_changes = self.picked_number.is_some();
                             self.picked_number = None;
-                            self.has_changes = true;
                         } else {
                             self.picked_number = Some(number);
                             self.has_changes = true;
                         }
                     } else if let Some(pick) = pick(context, camera, *position, tiles) {
+                        // TODO fix pick culling when https://github.com/asny/three-d/pull/542 is released
                         match pick.geometry_id {
                             0 => {
                                 self.new_pick = Some(pick.instance_id as usize);
@@ -344,6 +355,9 @@ impl UIState {
     }
 
     fn handle_picking(&mut self, anchor_on: bool, swap_on: bool) {
+        if self.win_anim.is_some() {
+            return;
+        }
         if let Some(pick_id) = self.new_pick {
             if !anchor_on || pick_id != ANCHOR_TILE_ID {
                 self.picked_tile_id = match self.picked_tile_id {
@@ -462,7 +476,7 @@ fn run(mut model: Model) {
     }
 
     // lights
-    let ambient = AmbientLight::new(&context, 0.35, Srgba::WHITE);
+    let mut ambient = AmbientLight::new(&context, 0.35, Srgba::WHITE);
 
     let mut point_light = PointLight::new(
         &context,
@@ -480,7 +494,7 @@ fn run(mut model: Model) {
         DirectionalLight::new(&context, 0.5, COLOR_FIERY_RED, vec3(0.0, -1.0, 0.0));
 
     // rendering & animation
-    let trans_factor = 0.05;
+    let mut trans_factor = 0.05;
     let tile_anim_speed = 10.0;
     let mut tile_colors = vec![COLOR_TILE_BASE; ICO_TILE_COUNT];
     tile_colors[ANCHOR_TILE_ID] = COLOR_TILE_0;
@@ -518,6 +532,8 @@ fn run(mut model: Model) {
                         ui_state.reset();
                         let (font_bytes, font_size) = font_bytes_and_size(ui_state.font);
                         numbers = generate_numbers(&model.pentas, &context, font_bytes, font_size);
+                        trans_factor = 0.05;
+                        ambient.intensity = 0.35;
                     }
                     // if ui
                     //     .radio_value(&mut ui_state.font, Font::TypeLightSans, "Type Light Sans")
@@ -553,6 +569,8 @@ fn run(mut model: Model) {
                         ui_state.reset();
                         let (font_bytes, font_size) = font_bytes_and_size(ui_state.font);
                         numbers = generate_numbers(&model.pentas, &context, font_bytes, font_size);
+                        trans_factor = 0.05;
+                        ambient.intensity = 0.35;
                     }
                     if ui
                         .add(Checkbox::new(
@@ -662,7 +680,7 @@ fn run(mut model: Model) {
         }
 
         // apply visual changes
-        if ui_state.has_changes {
+        if ui_state.win_anim.is_none() && ui_state.has_changes {
             let mut win = true;
 
             for [a, b, c] in TRI_TO_FACETS {
@@ -719,13 +737,63 @@ fn run(mut model: Model) {
             }
 
             if win {
-                // TODO
-                for number in numbers.iter_mut() {
-                    number.0.material.color = COLOR_TEXT_GOOD;
+                ui_state.win_anim = Some(0.);
+                if model.anchor_tile {
+                    tile_colors[ANCHOR_TILE_ID] = COLOR_TILE_BASE;
+                }
+                if let Some(num) = ui_state.picked_number {
+                    numbers_2d.get_mut(&num).unwrap().0.material.color = COLOR_GRAY_BROWN;
+                    let idx = model
+                        .puzzle_state
+                        .iter()
+                        .find_position(|&n| *n == num)
+                        .unwrap()
+                        .0;
+                    numbers[idx].0.material.color = COLOR_TEXT_GOOD;
+                }
+                if let Some(id) = ui_state.picked_tile_id {
+                    for num in numbers.iter_mut().skip(id * 5).take(5) {
+                        num.0.material.color = COLOR_TEXT_GOOD;
+                    }
+                    tile_colors[id] = COLOR_TILE_BASE;
                 }
             }
 
             ui_state.has_changes = false;
+        }
+        if let Some(prog) = ui_state.win_anim {
+            let delta = frame_input.elapsed_time as f32 / 10.;
+            let next_prog = f32::min(100., prog + delta);
+            ui_state.win_anim = Some(next_prog);
+
+            trans_factor *= 1. + delta / 35.;
+            ambient.intensity = f32::min(1., 0.35 + next_prog / 100. * 0.65);
+            fn recolor(col_from: Srgba, col_to: Srgba, delta: f32) -> Srgba {
+                let (r, g, b) = (
+                    col_from.r as f32 / 255.,
+                    col_from.g as f32 / 255.,
+                    col_from.b as f32 / 255.,
+                );
+                let (tr, tg, tb) = (
+                    col_to.r as f32 / 255.,
+                    col_to.g as f32 / 255.,
+                    col_to.b as f32 / 255.,
+                );
+                let (new_r, new_g, new_b) = (
+                    f32::min(tr, r + delta / 100. * (tr - r)),
+                    f32::min(tg, g + delta / 100. * (tg - g)),
+                    f32::min(tb, b + delta / 100. * (tb - b)),
+                );
+                Srgba::new(
+                    (new_r * 255.) as u8,
+                    (new_g * 255.) as u8,
+                    (new_b * 255.) as u8,
+                    255,
+                )
+            }
+            for tile_color in &mut tile_colors {
+                *tile_color = recolor(COLOR_TILE_BASE, Srgba::new(255, 255, 150, 255), next_prog);
+            }
         }
 
         // compute tile transformations (rotations, swapping animations)

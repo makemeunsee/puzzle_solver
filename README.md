@@ -48,7 +48,7 @@ Notes:
 
 ## TODOs
 
-* [ ] fix picking invisible triangle (three-d PR)
+* [x] fix picking invisible triangle (three-d PR)
 * [x] number helper (grid)
 * [x] lights controls: color, intensity, shadows, position
 * [x] non solid tiles
@@ -58,7 +58,7 @@ Notes:
 * [x] seed input, randomize button
 * [x] different fonts
 * [x] align unused nums
-* [ ] win animation (breaking/fading out, game controls locked, reveal dodeca?)
+* [x] win animation (breaking/fading out, game controls locked, reveal dodeca?)
 * [x] estimate difficulty: vs puzzle100
 * [x] estimate difficulty: shuffling triangles or not => same
 * [x] estimate difficulty: generating other triangles => same
