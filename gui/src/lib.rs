@@ -1,13 +1,11 @@
 mod shapes;
 
-use std::{
-    collections::HashMap,
-    hash::{DefaultHasher, Hash, Hasher},
-};
+use std::collections::HashMap;
 
+use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use itertools::Itertools;
 use log::debug;
-use rand::rngs::SmallRng;
+use rand::{rngs::SmallRng, SeedableRng};
 use shapes::{
     facet_shift_rotation, Polyhedron, ICO_TILE_COUNT, TILE0_FACET0_CENTER, TRANSFORMATIONS_BASE,
 };
@@ -175,14 +173,12 @@ struct Model {
     goal_sum: i32,
     puzzle_state: [i32; 5 * ICO_TILE_COUNT],
     swap_on: bool,
-    anchor_tile: bool,
+    anchor_tile: Option<usize>,
     triangle_highlighting: bool,
-    rng: SmallRng,
 }
 
 impl Model {
     fn new(triplets: &[(i32, i32, i32); 20], unused: &[i32; 5]) -> Self {
-        use rand::prelude::*;
         let mut rng = SmallRng::seed_from_u64(SEED0);
         let triplets = *triplets;
         debug!("solution:\n{:?}", triplets);
@@ -221,23 +217,33 @@ impl Model {
             goal_sum,
             puzzle_state,
             swap_on: true,
-            anchor_tile: true,
+            anchor_tile: Some(ANCHOR_TILE_ID),
             triangle_highlighting: true,
-            rng,
         }
     }
 
     fn reset(&mut self) {
-        self.pentas =
-            triangles_to_pentas_shuffled(&self.triplets, &mut self.rng, true, self.swap_on);
+        let mut rng = SmallRng::seed_from_u64(SEED0);
+        self.pentas = triangles_to_pentas_shuffled(&self.triplets, &mut rng, true, self.swap_on);
         self.puzzle_state = self
             .pentas
             .iter()
             .flat_map(|penta| *penta)
             .collect_array()
             .unwrap();
-        self.anchor_tile = self.swap_on;
+        self.anchor_tile = if self.swap_on {
+            Some(ANCHOR_TILE_ID)
+        } else {
+            None
+        };
     }
+}
+
+#[derive(PartialOrd, Ord, PartialEq, Eq)]
+enum Difficulty {
+    Easy,
+    Normal,
+    Hard,
 }
 
 struct UIState {
@@ -334,7 +340,7 @@ impl UIState {
                             self.picked_number = Some(number);
                             self.has_changes = true;
                         }
-                    } else if let Some(pick) = pick(context, camera, *position, tiles) {
+                    } else if let Some(pick) = pick(context, camera, *position, tiles, Cull::Back) {
                         // TODO fix pick culling when https://github.com/asny/three-d/pull/542 is released
                         match pick.geometry_id {
                             0 => {
@@ -354,12 +360,12 @@ impl UIState {
         }
     }
 
-    fn handle_picking(&mut self, anchor_on: bool, swap_on: bool) {
+    fn handle_picking(&mut self, anchor_on: Option<usize>, swap_on: bool) {
         if self.win_anim.is_some() {
             return;
         }
         if let Some(pick_id) = self.new_pick {
-            if !anchor_on || pick_id != ANCHOR_TILE_ID {
+            if Some(pick_id) != anchor_on {
                 self.picked_tile_id = match self.picked_tile_id {
                     // picked the same tile -> rotate it
                     Some(id) if id == pick_id => Some(id),
@@ -384,7 +390,7 @@ impl UIState {
         self.new_pick = None;
         if self.rotation != 0. {
             if let Some(id) = self.picked_tile_id {
-                if (self.rotating[id] as Option<_>).is_none() {
+                if self.rotating[id].is_none() {
                     self.rotating[id] = Some((0., self.rotation > 0.));
                 }
             }
@@ -505,6 +511,9 @@ fn run(mut model: Model) {
     let mut gui = three_d::GUI::new(&context);
     let mut seed_buffer = format!("{}", model.seed);
 
+    let mut modal_rules = false;
+    let mut difficulty = Difficulty::Normal;
+
     window.render_loop(move |mut frame_input| {
         let mut panel_width = 0.0;
         gui.update(
@@ -517,77 +526,103 @@ fn run(mut model: Model) {
                 SidePanel::left("side_panel").show(gui_context, |ui| {
                     use three_d::egui::*;
                     ui.add_space(50.);
-                    ui.heading("Generation");
+                    if ui.button("How to play").clicked() {
+                        modal_rules = true;
+                    }
+                    ui.add_space(50.);
 
-                    ui.add(TextEdit::singleline(&mut seed_buffer));
-                    if ui.add(Button::new("Randomize tiles from seed")).clicked() {
-                        model.seed = if let Ok(number) = seed_buffer.parse() {
-                            number
-                        } else {
-                            let mut hasher = DefaultHasher::new();
-                            seed_buffer.hash(&mut hasher);
-                            hasher.finish()
-                        };
+                    ui.heading("Difficulty");
+                    if ui.radio_value(&mut difficulty, Difficulty::Easy, "Easy").clicked() {
+                        model.swap_on = false;
+                        model.triangle_highlighting = true;
                         model.reset();
+                        ui_state.number_grid = true;
                         ui_state.reset();
                         let (font_bytes, font_size) = font_bytes_and_size(ui_state.font);
                         numbers = generate_numbers(&model.pentas, &context, font_bytes, font_size);
                         trans_factor = 0.05;
                         ambient.intensity = 0.35;
-                    }
-                    // if ui
-                    //     .radio_value(&mut ui_state.font, Font::TypeLightSans, "Type Light Sans")
-                    //     .clicked()
-                    // {
-                    //     model.reset();
-                    //     ui_state.reset();
-                    //     let (font_bytes, font_size) = font_bytes_and_size(ui_state.font);
-                    //     numbers = generate_numbers(&model.pentas, &context, font_bytes, font_size);
-                    //     numbers_unused =
-                    //         generate_unused_numbers(&model.unused, &context, font_bytes, font_size);
+                    };
+                    if ui.radio_value(&mut difficulty, Difficulty::Normal, "Normal").clicked() {
+                        model.swap_on = true;
+                        model.triangle_highlighting = true;
+                        model.reset();
+                        ui_state.number_grid = true;
+                        ui_state.reset();
+                        let (font_bytes, font_size) = font_bytes_and_size(ui_state.font);
+                        numbers = generate_numbers(&model.pentas, &context, font_bytes, font_size);
+                        trans_factor = 0.05;
+                        ambient.intensity = 0.35;
+                    };
+                    if ui.radio_value(&mut difficulty, Difficulty::Hard, "Hard").clicked() {
+                        model.swap_on = true;
+                        model.triangle_highlighting = false;
+                        model.reset();
+                        model.anchor_tile = None;
+                        ui_state.number_grid = false;
+                        ui_state.reset();
+                        let (font_bytes, font_size) = font_bytes_and_size(ui_state.font);
+                        numbers = generate_numbers(&model.pentas, &context, font_bytes, font_size);
+                        trans_factor = 0.05;
+                        ambient.intensity = 0.35;
+                    };
+
+                    // ui.separator();
+                    // ui.heading("Generation");
+                    // ui.text_edit_singleline(&mut seed_buffer);
+                    // if ui.button("Randomize tiles from seed").clicked() {
+                    //     model.seed = if let Ok(number) = seed_buffer.parse() {
+                    //         number
+                    //     } else {
+                    //         let mut hasher = DefaultHasher::new();
+                    //         seed_buffer.hash(&mut hasher);
+                    //         hasher.finish()
+                    //     };
                     // }
 
-                    ui.add(three_d::egui::Separator::default());
-                    ui.heading("Gameplay");
-                    if ui
-                        .add_enabled(
-                            model.swap_on,
-                            Checkbox::new(&mut model.anchor_tile, "Anchor tile"),
-                        )
-                        .clicked()
-                    {
-                        ui_state.has_changes = true;
-                    }
-                    if ui
-                        .add(Checkbox::new(
-                            &mut model.swap_on,
-                            "Swappable tiles (resets the puzzle)",
-                        ))
-                        .clicked()
-                    {
-                        model.reset();
-                        ui_state.reset();
-                        let (font_bytes, font_size) = font_bytes_and_size(ui_state.font);
-                        numbers = generate_numbers(&model.pentas, &context, font_bytes, font_size);
-                        trans_factor = 0.05;
-                        ambient.intensity = 0.35;
-                    }
-                    if ui
-                        .add(Checkbox::new(
-                            &mut model.triangle_highlighting,
-                            "Highlight valid facets",
-                        ))
-                        .clicked()
-                    {
-                        ui_state.has_changes = true;
-                    }
-                    if ui
-                        .checkbox(&mut ui_state.number_grid, "Show number grid")
-                        .clicked()
-                        && !ui_state.number_grid
-                    {
-                        ui_state.picked_number = None;
-                        ui_state.has_changes = true;
+                    if modal_rules {
+                        let modal = Modal::new(Id::new("rules")).show(ui.ctx(), |ui| {
+                            ui.set_width(frame_input.viewport.width as f32 / 2.);
+
+                            let markdown = format!(
+                                r"# How to play
+
+* Re-organize the tiles so that each triangle (= 3 facets) sums to **`{}`**
+* `left click` - select a tile
+* `mouse wheel` - rotate a selected tile
+* `right click` - swap a selected tile with another tile
+
+# Hints
+
+* Complete a triangle and its numbers light up.
+* Select/deselect a number in the grid to highlight it on the puzzle.
+* Grayed out numbers are not present in the puzzle.
+* The darker tile is anchored; it cannot be rotated or swapped, i.e. all other tiles move relatively to this tile.
+
+# Difficulties
+
+#### Easy
+
+Tiles are fixed in place and can only be rotated; anchoring is disabled.
+
+#### Normal
+
+Base rules.
+
+#### Hard
+
+Base rules but without any hint.
+",
+                                model.goal_sum,
+                            );
+
+                            let mut cache = CommonMarkCache::default();
+                            CommonMarkViewer::new().show(ui, &mut cache, &markdown);
+                        });
+
+                        if modal.should_close() {
+                            modal_rules = false;
+                        }
                     }
                 });
                 panel_width = gui_context.used_rect().width();
@@ -715,8 +750,8 @@ fn run(mut model: Model) {
                 *tile_color = COLOR_TILE_BASE;
             }
 
-            if model.anchor_tile {
-                tile_colors[ANCHOR_TILE_ID] = COLOR_TILE_0;
+            if let Some(id) = model.anchor_tile {
+                tile_colors[id] = COLOR_TILE_0;
             }
 
             if let Some(num) = ui_state.picked_number {
@@ -738,8 +773,8 @@ fn run(mut model: Model) {
 
             if win {
                 ui_state.win_anim = Some(0.);
-                if model.anchor_tile {
-                    tile_colors[ANCHOR_TILE_ID] = COLOR_TILE_BASE;
+                if let Some(id) = model.anchor_tile {
+                    tile_colors[id] = COLOR_TILE_BASE;
                 }
                 if let Some(num) = ui_state.picked_number {
                     numbers_2d.get_mut(&num).unwrap().0.material.color = COLOR_GRAY_BROWN;
@@ -869,19 +904,6 @@ fn run(mut model: Model) {
                                 + GRID_COL_WIDTH / 2) as f32
                                 - (*x_max - *x_min) / 2.,
                             (viewport.height as i32 - (GRID_ROW_HEIGHT * (row + 1))) as f32,
-                            0.,
-                        )));
-                        number.render(&Camera::new_2d(viewport), &[]);
-                    }
-                } else {
-                    let viewport = frame_input.viewport;
-                    for (i, n) in model.unused.iter().enumerate() {
-                        let (number, (x_min, x_max, _, _)) = numbers_2d.get_mut(n).unwrap();
-                        number.set_transformation(Mat4::from_translation(Vec3::new(
-                            (viewport.width as i32 - GRID_COL_WIDTH / 2 + GRID_COL_WIDTH / 2)
-                                as f32
-                                - (*x_max - *x_min) / 2.,
-                            (viewport.height as i32 - (GRID_ROW_HEIGHT * (i as i32 + 1))) as f32,
                             0.,
                         )));
                         number.render(&Camera::new_2d(viewport), &[]);

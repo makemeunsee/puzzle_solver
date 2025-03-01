@@ -3,27 +3,36 @@
 ## The puzzle
 
 12+ pentagonal tiles, each exhibiting 5 different numbers, are to be assembled to form an icosahedron.
-Each face of the icosahedron will show 3 different numbers, which sum must be e.g. `96`.
+Each face of the icosahedron will show 3 different numbers, which sum must be e.g. `99`.
 
 ## Demo
 
-to come
+https://makemeunsee.github.io/puzzle_solver/dodeca.html
 
 ## How to run
 
 ### Native
 
 ```sh
-RUST_LOG=info cargo run --release --bin native -- $SEED
+RUST_LOG=info cargo run --release --bin native
 ```
-
-where `SEED` is a number, used to seed rnd.
 
 ### Web
 
+Build command:
+
 ```sh
+cd web/
 RUSTFLAGS='--cfg getrandom_backend="wasm_js"'  wasm-pack build --target web --out-name web --out-dir pkg
 ```
+
+Requires a webserver running from `web/` e.g.:
+
+```sh
+python3 -m http.server --bind :: 8080
+```
+
+Then the web app is accessible at `localhost:8080`.
 
 ### Generating the icosahedron-dodecahedron graph
 
@@ -48,33 +57,4 @@ Notes:
 
 ## TODOs
 
-* [x] fix picking invisible triangle (three-d PR)
-* [x] number helper (grid)
-* [x] lights controls: color, intensity, shadows, position
-* [x] non solid tiles
-* [ ] ~~darker tile inside~~ too much hassle
-* [x] metallicity control
-* [x] visu controls: trans factor
-* [x] seed input, randomize button
-* [x] different fonts
-* [x] align unused nums
-* [x] win animation (breaking/fading out, game controls locked, reveal dodeca?)
-* [x] estimate difficulty: vs puzzle100
-* [x] estimate difficulty: shuffling triangles or not => same
-* [x] estimate difficulty: generating other triangles => same
-* [ ] ~~generate triangles +check has unique sol~~ done but no point in keeping it 
-* [x] fix click capture on web
-* [x] facet swapping
-* [x] numbers follow facets
-* [x] triangle shines if correct
-* [x] better font
-* [x] swap anim
-* [x] unmoveable facet
-* [x] -> toggleable
-* [x] list unused numbers
-* [ ] cheat mode: no swap
-* [ ] easy mode: no swap, no highlight
-* [ ] hard mode: no highlight
-* [ ] impossible mode: 13rd facet
-* [ ] fullscreen perf?
-* [x] darker facet back / shadows again?
+* [ ] impossible mode: 13rd tile and/or 1 tile has 2 sides
