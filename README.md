@@ -37,4 +37,4 @@ cargo run --release --bin svg
 
 ## TODOs
 
-* [ ] scramble/unscramble
+* [ ] fix picking with variable projection
