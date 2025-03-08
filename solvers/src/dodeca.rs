@@ -25,24 +25,24 @@ pub const PENTAS: [[usize; 5]; 12] = [
 pub const TRI_TO_FACETS: [[usize; 3]; 20] = [
     [0, 5, 10],
     [4, 11, 30],
-    [1, 9, 35],
-    [6, 14, 40],
-    [3, 15, 31],
+    [1, 35, 9],
+    [6, 40, 14],
+    [3, 31, 15],
     [2, 16, 39],
-    [8, 20, 36],
+    [8, 36, 20],
     [7, 21, 44],
-    [13, 25, 41],
+    [13, 41, 25],
     [12, 26, 34],
     [19, 32, 55],
-    [17, 38, 45],
+    [17, 45, 38],
     [24, 37, 46],
-    [22, 43, 50],
+    [22, 50, 43],
     [29, 42, 51],
-    [27, 33, 59],
-    [18, 49, 56],
+    [27, 59, 33],
+    [18, 56, 49],
     [23, 47, 54],
     [28, 52, 58],
-    [48, 53, 57],
+    [48, 57, 53],
 ];
 
 // equivalent to PENTAS; for each facet, its pentagon (dodeca face) and its triangle (icosa face)
@@ -108,6 +108,45 @@ pub const FACETS: [(usize, usize); 60] = [
     (11, 18),
     (11, 15),
 ];
+
+pub const PENTAS_GRAPH: [[usize; 5]; 12] = [
+    [1, 2, 6, 3, 7],
+    [0, 7, 4, 8, 2],
+    [0, 1, 8, 5, 6],
+    [0, 6, 11, 9, 7],
+    [1, 7, 9, 10, 8],
+    [2, 8, 10, 11, 6],
+    [0, 2, 5, 11, 3],
+    [0, 3, 9, 4, 1],
+    [1, 4, 10, 5, 2],
+    [3, 11, 10, 4, 7],
+    [4, 9, 11, 5, 8],
+    [3, 6, 5, 10, 9],
+];
+
+// Helper function when rotating a tile and its neighbour tiles along.
+// Given 2 neighbour facets of the 'pivot' tile, and a direction (could be inferred too),
+// returns the ids of the neighbour tiles to rotate along and how to map their facets (offset to apply)
+// e.g.: (i, j, offset) => each facet(id=k) of the source tile(id=i) maps to the facet(id=k+offset) of the target tile(id=j)
+pub fn offset_to_rot(facet_from: usize, facet_to: usize, clockwise: bool) -> (usize, usize, usize) {
+    let next_offset = if clockwise { 1 } else { 2 };
+
+    let triangle_from = FACETS[facet_from].1;
+    let facets_from = TRI_TO_FACETS[triangle_from];
+    let facet_from_idx = facets_from.iter().position(|f| *f == facet_from).unwrap();
+    let penta_facet_from = facets_from[(facet_from_idx + next_offset) % 3];
+
+    let triangle_to = FACETS[facet_to].1;
+    let facets_to = TRI_TO_FACETS[triangle_to];
+    let facet_to_idx = facets_to.iter().position(|f| *f == facet_to).unwrap();
+    let penta_facet_to = facets_to[(facet_to_idx + next_offset) % 3];
+
+    (
+        penta_facet_from / 5,
+        penta_facet_to / 5,
+        ((penta_facet_to % 5 + 5) - (penta_facet_from % 5)) % 5,
+    )
+}
 
 pub fn triangles_to_pentas_shuffled(
     triplets: &[(i32, i32, i32); 20],

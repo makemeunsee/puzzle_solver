@@ -703,6 +703,7 @@ dependencies = [
 name = "gui"
 version = "0.1.0"
 dependencies = [
+ "cgmath",
  "egui_commonmark",
  "image",
  "itertools",

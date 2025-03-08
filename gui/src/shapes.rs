@@ -118,6 +118,7 @@ impl Polyhedron {
 
         let ideal_indices = [
             // top facets
+            0, 10, 1, //
             0, 1, 2, //
             0, 2, 3, //
             0, 3, 4, //
@@ -127,7 +128,6 @@ impl Polyhedron {
             0, 7, 8, //
             0, 8, 9, //
             0, 9, 10, //
-            0, 10, 1, //
             // sides
             2, 1, 3, //
             4, 3, 5, //
@@ -222,10 +222,11 @@ impl Polyhedron {
 }
 
 pub const ICO_TILE_COUNT: usize = 12;
+pub const FACET_COUNT: usize = 60;
 
 // transformations to tile ico tiles into an ico
 lazy_static! {
-    pub static ref TRANSFORMATIONS_BASE: [Mat4;ICO_TILE_COUNT]=[
+    pub static ref TRANSFORMATIONS_BASE: [Mat4; ICO_TILE_COUNT]=[
         Mat4::identity(),                                              // D0
         Mat4::from_angle_y(degrees(180.)),                             // D1
         Mat4::from_angle_x(degrees(180.)) * MAGIC_ROT_A * MAGIC_ROT_B, // D2
@@ -242,7 +243,18 @@ lazy_static! {
 }
 
 lazy_static! {
-    pub static ref TILE0_FACET0_CENTER: Vec3 = Polyhedron::ico_tile().positions[0];
+    pub static ref TILE0_CENTER: Vec3 = Polyhedron::ico_tile().positions[0];
+}
+lazy_static! {
+    pub static ref TILES_CENTERS: [Vec3; ICO_TILE_COUNT] = TRANSFORMATIONS_BASE
+        .iter()
+        .map(|mat| { (mat * TILE0_CENTER.extend(0.)).truncate() })
+        .collect_array()
+        .unwrap();
+}
+lazy_static! {
+    pub static ref FACET0_CENTER: Vec3 =
+        (1. * Polyhedron::ico_tile().positions[0] + 2. * Polyhedron::ico_tile().positions[2]) / 3.;
 }
 
 // further transformation to apply to move to the a particular facet of a tile

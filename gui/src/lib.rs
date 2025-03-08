@@ -1,21 +1,18 @@
 mod shapes;
 
-use std::collections::HashMap;
-
+use cgmath::{Angle, Matrix};
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use itertools::Itertools;
-use log::debug;
-use rand::{rngs::SmallRng, SeedableRng};
 use shapes::{
-    facet_shift_rotation, Polyhedron, ICO_TILE_COUNT, TILE0_FACET0_CENTER, TRANSFORMATIONS_BASE,
+    facet_shift_rotation, Polyhedron, FACET0_CENTER, FACET_COUNT, ICO_TILE_COUNT, TILE0_CENTER,
+    TILES_CENTERS, TRANSFORMATIONS_BASE,
 };
-use solvers::dodeca::{triangles_to_pentas_shuffled, TRI_TO_FACETS};
+use solvers::dodeca::{offset_to_rot, FACETS, PENTAS_GRAPH, TRI_TO_FACETS};
 use three_d::{
-    core::Context, degrees, pick, vec3, AmbientLight, Attenuation, Camera, ClearState,
-    ColorMaterial, CpuMaterial, Cull, DirectionalLight, Event, FrameOutput, FreeOrbitControl, Gm,
-    InnerSpace, InstancedMesh, Instances, Light, Mat4, Mesh, MouseButton, Object, PhysicalMaterial,
-    PointLight, RendererError, SquareMatrix, Srgba, TextGenerator, TextLayoutOptions, Vec3, Vec4,
-    Viewer, Viewport, Window, WindowSettings,
+    core::Context, degrees, pick, vec3, AmbientLight, Attenuation, Camera, ClearState, Cull,
+    DirectionalLight, Event, FrameOutput, FreeOrbitControl, Gm, InnerSpace, InstancedMesh,
+    Instances, Light, Mat4, Mesh, MouseButton, Object, PhysicalMaterial, PointLight, RendererError,
+    Srgba, TextGenerator, TextLayoutOptions, Vec3, Vec4, Viewport, Window, WindowSettings,
 };
 
 const COLOR_LIGHT_BLUE: Srgba = Srgba::new_opaque(100, 150, 255);
@@ -27,21 +24,9 @@ const COLOR_YELLOW: Srgba = Srgba::new_opaque(255, 226, 0);
 const COLOR_GRAY_BROWN: Srgba = Srgba::new_opaque(94, 94, 80);
 const COLOR_BLACK_BROWN: Srgba = Srgba::new_opaque(30, 30, 25);
 
-const COLOR_TILE_0: Srgba = Srgba::new_opaque(220, 180, 0);
-const COLOR_TILE_BASE: Srgba = COLOR_YELLOW;
-const COLOR_TILE_PICK: Srgba = COLOR_GRAY_BROWN;
-const COLOR_TEXT_PICK: Srgba = COLOR_NEON_GREEN;
-const COLOR_TEXT_GOOD: Srgba = COLOR_LIGHT_GOLD;
-const COLOR_TEXT_BAD: Srgba = Srgba::BLACK;
-
 const FONT_TYPELIT: &[u8; 7372] = include_bytes!("TypeLightSans_mod.otf");
 
 const PENTA_ANGLE: f32 = 72.;
-
-const GRID_WIDTH: i32 = 650;
-const GRID_COL_WIDTH: i32 = 50;
-const GRID_HEIGHT: i32 = 200;
-const GRID_ROW_HEIGHT: i32 = 40;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 enum Font {
@@ -50,7 +35,7 @@ enum Font {
 
 fn font_bytes_and_size(font: Font) -> (&'static [u8], f32) {
     match font {
-        Font::TypeLightSans => (FONT_TYPELIT, 3.5),
+        Font::TypeLightSans => (FONT_TYPELIT, 5.),
     }
 }
 
@@ -58,205 +43,117 @@ const ANCHOR_TILE_ID: usize = 11;
 
 const SEED0: u64 = 0xACE0FBA5E15DEAD;
 
-fn generate_numbers_and_bounds(
-    numbers: &[i32],
+fn generate_glyphs(
     context: &Context,
     font: &[u8],
     font_size: f32,
-) -> HashMap<i32, (Gm<Mesh, ColorMaterial>, (f32, f32, f32, f32))> {
-    let text_generator = TextGenerator::new(font, 0, font_size * 10.).unwrap();
+) -> Vec<(Gm<Mesh, PhysicalMaterial>, usize, Mat4)> {
+    // common matrices to place numbers on facets
+    let smaller = Mat4::from_scale(0.1);
+    let facet_align =
+        Mat4::from_axis_angle(Vec3::unit_x(), degrees(-69.1)) * Mat4::from_angle_z(degrees(-60.));
+    let facet_center =
+        (1. * Polyhedron::ico_tile().positions[0] + 2. * Polyhedron::ico_tile().positions[2]) / 3.;
+    let facet_translate = Mat4::from_translation(facet_center * 1.001);
 
-    let mut result = HashMap::new();
-    for n in numbers {
-        let text_mesh = text_generator.generate(&format!("{}", n), TextLayoutOptions::default());
-        let extrema = text_mesh.positions.to_f32().iter().fold(
-            (1000., 0., 1000., 0.),
-            |(x_min, x_max, y_min, y_max), pos| {
-                (
-                    f32::min(x_min, pos.x),
-                    f32::max(x_max, pos.x),
-                    f32::min(y_min, pos.y),
-                    f32::max(y_max, pos.y),
-                )
+    let text_generator = TextGenerator::new(font, 0, font_size).unwrap();
+
+    let mut glyphs = vec![];
+    //     "•", "°", "+", "=", "-", "|", ".", "…", ":", "o", "^", "�", "¦",
+    let patterns = [
+        ".",      // white
+        "..\n..", // blue
+        "…",      // red
+        "..",     // green
+        ".",      // gray
+        "..\n..", // yellow
+        "..",     // purple
+        "…",      // teal
+        "..\n..", // dark gray
+        "..",     // orange
+        "…",      // teal
+        "..",     // dark gray
+        ".",      // orange
+        "..\n..", // gray
+        "…",      // yellow
+        ".",      // purple
+        ".",      // green
+        "…",      // blue
+        "..\n..", // red
+        "..",     // white
+    ];
+    for (facet, (_, tri)) in FACETS.iter().enumerate() {
+        // let glyph = format!("{} {}", facet, patterns[*tri]);
+        let glyph = patterns[*tri];
+        let text_mesh = text_generator.generate(glyph, TextLayoutOptions { line_height: 0.2 });
+        let (x_min, x_max, y_min, y_max, z_min, z_max) = text_mesh.positions.to_f32().iter().fold(
+            (1000., 0., 1000., 0., 1000., 0.),
+            |mut acc, p| {
+                acc.0 = f32::min(acc.0, p.x);
+                acc.1 = f32::max(acc.1, p.x);
+                acc.2 = f32::min(acc.2, p.y);
+                acc.3 = f32::max(acc.3, p.y);
+                acc.4 = f32::min(acc.4, p.z);
+                acc.5 = f32::max(acc.5, p.z);
+                acc
             },
         );
+        let to_origin = Mat4::from_translation(Vec3::new(
+            -(x_min + x_max) / 2.,
+            -(y_min + y_max) / 2.,
+            -(z_min + z_max) / 2.,
+        ));
         let mut text = Gm::new(
             Mesh::new(context, &text_mesh),
-            ColorMaterial {
-                color: COLOR_GRAY_BROWN,
+            PhysicalMaterial {
+                albedo: Srgba::BLACK,
+                emissive: Srgba {
+                    r: 5,
+                    g: 5,
+                    b: 0,
+                    a: 255,
+                },
+                metallic: 0.6,
+                roughness: 0.3,
                 ..Default::default()
             },
         );
         text.material.render_states.cull = Cull::Front;
-        result.insert(*n, (text, extrema));
+
+        // matrix to put the number on the 1st facet of a tile
+        let pos_mat = facet_translate * facet_align * smaller * to_origin;
+
+        glyphs.push((text, facet, pos_mat));
     }
-    result
+    glyphs
 }
 
-fn generate_numbers(
-    pentas: &[[i32; 5]; ICO_TILE_COUNT],
-    context: &Context,
-    font: &[u8],
-    font_size: f32,
-) -> Vec<(Gm<Mesh, ColorMaterial>, usize, Mat4, Mat4)> {
-    // common matrices to place numbers on tiles
-    let smaller = Mat4::from_scale(0.1);
-    let tile_align =
-        Mat4::from_axis_angle(Vec3::unit_x(), degrees(-69.1)) * Mat4::from_angle_z(degrees(-60.));
-    let tile_center =
-        (1. * Polyhedron::ico_tile().positions[0] + 2. * Polyhedron::ico_tile().positions[1]) / 3.;
-    let tile_translate = Mat4::from_translation(tile_center * 1.001);
-
-    let text_generator = TextGenerator::new(font, 0, font_size).unwrap();
-
-    let mut numbers = vec![];
-    for (i, penta) in pentas.iter().enumerate() {
-        for (j, v) in penta.iter().enumerate() {
-            let v = *v;
-            let string = if v == 6 || v == 9 {
-                format!("{}\n_", v)
-            } else if v == 16 || v == 19 || v == 61 {
-                format!("{}\n\u{2009}_", v)
-            } else {
-                format!("{}\n", v)
-            };
-            let text_mesh =
-                text_generator.generate(&string, TextLayoutOptions { line_height: 0.05 });
-            let (x_min, x_max, y_min, y_max, z_min, z_max) = text_mesh
-                .positions
-                .to_f32()
-                .iter()
-                .fold((1000., 0., 1000., 0., 1000., 0.), |mut acc, p| {
-                    acc.0 = f32::min(acc.0, p.x);
-                    acc.1 = f32::max(acc.1, p.x);
-                    acc.2 = f32::min(acc.2, p.y);
-                    acc.3 = f32::max(acc.3, p.y);
-                    acc.4 = f32::min(acc.4, p.z);
-                    acc.5 = f32::max(acc.5, p.z);
-                    acc
-                });
-            let to_origin = Mat4::from_translation(Vec3::new(
-                -(x_min + x_max) / 2.,
-                -(y_min + y_max) / 2.,
-                -(z_min + z_max) / 2.,
-            ));
-            let mut text = Gm::new(
-                Mesh::new(context, &text_mesh),
-                ColorMaterial {
-                    color: Srgba::BLACK,
-                    ..Default::default()
-                },
-            );
-            text.material.render_states.cull = Cull::Front;
-
-            // matrix to put the number on the 1st facet of a tile
-            let pos_mat = tile_translate * tile_align * smaller * to_origin;
-            // matrix to put the number from the 1st facet of a tile to its proper face
-            let rot_mat = facet_shift_rotation(i, j);
-
-            numbers.push((text, i, rot_mat, pos_mat));
-        }
-    }
-    numbers
-}
-
-pub fn demo_3d(triplets: &[(i32, i32, i32); 20], unused: &[i32; 5]) {
-    run(Model::new(triplets, unused));
+pub fn demo_3d() {
+    run(Model::new());
 }
 
 #[derive(Clone)]
 struct Model {
-    triplets: [(i32, i32, i32); 20],
-    pentas: [[i32; 5]; ICO_TILE_COUNT],
-    unused: [i32; 5],
     seed: u64,
-    goal_sum: i32,
-    puzzle_state: [i32; 5 * ICO_TILE_COUNT],
-    swap_on: bool,
-    anchor_tile: Option<usize>,
-    triangle_highlighting: bool,
 }
 
 impl Model {
-    fn new(triplets: &[(i32, i32, i32); 20], unused: &[i32; 5]) -> Self {
-        let mut rng = SmallRng::seed_from_u64(SEED0);
-        let triplets = *triplets;
-        debug!("solution:\n{:?}", triplets);
+    fn new() -> Self {
+        // let mut rng = SmallRng::seed_from_u64(SEED0);
 
-        let pentas = triangles_to_pentas_shuffled(&triplets, &mut rng, true, true);
-
-        // debug: only 1 rot to solution
-        // let mut pentas = triangles_to_pentas_shuffled(&triplets, &mut rng, false, false);
-        // let single_rot = &mut pentas[0];
-        // for i in 0..4 {
-        //     let new_i = (i + 1) % 5;
-        //     single_rot.swap(i, new_i);
-        // }
-
-        // debug values: value is facet id
-        // let pentas = (0..60)
-        //     .chunks(5)
-        //     .into_iter()
-        //     .map(|x| x.collect_array().unwrap())
-        //     .collect_array()
-        //     .unwrap();
-
-        let puzzle_state: [i32; 60] = pentas
-            .iter()
-            .flat_map(|penta| *penta)
-            .collect_array()
-            .unwrap();
-
-        let goal_sum = triplets[0].0 + triplets[0].1 + triplets[0].2;
-
-        Model {
-            triplets,
-            pentas,
-            unused: *unused,
-            seed: SEED0,
-            goal_sum,
-            puzzle_state,
-            swap_on: true,
-            anchor_tile: Some(ANCHOR_TILE_ID),
-            triangle_highlighting: true,
-        }
+        Model { seed: SEED0 }
     }
 
-    fn reset(&mut self) {
-        let mut rng = SmallRng::seed_from_u64(SEED0);
-        self.pentas = triangles_to_pentas_shuffled(&self.triplets, &mut rng, true, self.swap_on);
-        self.puzzle_state = self
-            .pentas
-            .iter()
-            .flat_map(|penta| *penta)
-            .collect_array()
-            .unwrap();
-        self.anchor_tile = if self.swap_on {
-            Some(ANCHOR_TILE_ID)
-        } else {
-            None
-        };
-    }
-}
-
-#[derive(PartialOrd, Ord, PartialEq, Eq)]
-enum Difficulty {
-    Easy,
-    Normal,
-    Hard,
+    fn reset(&mut self) {}
 }
 
 struct UIState {
-    picked_tile_id: Option<usize>,
+    picked_facet_id: Option<usize>,
     new_pick: Option<usize>,
-    swapping: Option<(usize, usize, f32)>,
     rotating: [Option<(f32, bool)>; ICO_TILE_COUNT],
     pressed_on: Option<(f32, f32)>,
-    right_click: bool,
-    rotation: f32,
+    new_rotation: f32,
     font: Font,
-    picked_number: Option<i32>,
-    number_grid: bool,
     has_changes: bool,
     win_anim: Option<f32>,
 }
@@ -264,24 +161,19 @@ struct UIState {
 impl UIState {
     fn new() -> Self {
         UIState {
-            picked_tile_id: None,
+            picked_facet_id: None,
             new_pick: None,
-            swapping: None,
             rotating: [None; ICO_TILE_COUNT],
             pressed_on: None,
-            right_click: false,
-            rotation: 0.,
+            new_rotation: 0.,
             font: Font::TypeLightSans,
-            picked_number: None,
-            number_grid: true,
             has_changes: true,
             win_anim: None,
         }
     }
 
     fn reset(&mut self) {
-        self.picked_tile_id = None;
-        self.swapping = None;
+        self.picked_facet_id = None;
         self.rotating = [None; ICO_TILE_COUNT];
         self.has_changes = true;
         self.win_anim = None;
@@ -292,23 +184,23 @@ impl UIState {
         event: &mut Event,
         context: &Context,
         camera: &mut Camera,
-        tiles: &Gm<InstancedMesh, PhysicalMaterial>,
-        unused: &[i32],
+        facets: &Gm<InstancedMesh, PhysicalMaterial>,
     ) {
         match event {
             Event::MouseWheel { delta, handled, .. } => {
-                self.rotation = delta.1;
+                self.new_rotation = delta.1;
                 *handled = true;
             }
             // track left click presses to identify dragging movements
-            Event::MousePress { position, .. } => {
+            Event::MousePress {
+                button, position, ..
+            } if *button == MouseButton::Left => {
                 self.pressed_on = Some((position.x, position.y));
-                self.right_click = false;
             }
             // maybe pick
             Event::MouseRelease {
                 button, position, ..
-            } => {
+            } if *button == MouseButton::Left => {
                 // pick only if not a dragging movement
                 let moved = if let Some((x, y)) = self.pressed_on {
                     let delta_x = position.x - x;
@@ -319,39 +211,17 @@ impl UIState {
                 };
                 self.pressed_on = None;
                 if !moved {
-                    let x = camera.viewport().x;
-                    let y = camera.viewport().y;
-                    let w = camera.viewport().width as i32;
-                    let h = camera.viewport().height as i32;
-                    let mx = position.x as i32 - x - (w - GRID_WIDTH);
-                    let my = position.y as i32 - y - (h - GRID_HEIGHT);
-                    if MouseButton::Left == *button
-                        && self.number_grid
-                        && (0..=GRID_WIDTH).contains(&mx)
-                        && (0..=GRID_HEIGHT).contains(&my)
-                    {
-                        let number =
-                            mx / GRID_COL_WIDTH * 5 + 1 + (GRID_HEIGHT - my) / GRID_ROW_HEIGHT;
-                        debug!("picked number {number}");
-                        if unused.contains(&number) || self.picked_number == Some(number) {
-                            self.has_changes = self.picked_number.is_some();
-                            self.picked_number = None;
-                        } else {
-                            self.picked_number = Some(number);
-                            self.has_changes = true;
-                        }
-                    } else if let Some(pick) = pick(context, camera, *position, tiles, Cull::Back) {
+                    if let Some(pick) = pick(context, camera, *position, facets, Cull::Back) {
                         // TODO fix pick culling when https://github.com/asny/three-d/pull/542 is released
                         match pick.geometry_id {
                             0 => {
                                 self.new_pick = Some(pick.instance_id as usize);
-                                self.right_click = MouseButton::Right == *button;
                             }
                             _ => unreachable!(),
                         };
-                    } else if MouseButton::Left == *button && self.picked_tile_id.is_some() {
+                    } else if self.picked_facet_id.is_some() {
                         // picked out -> unpick current
-                        self.picked_tile_id = None;
+                        self.picked_facet_id = None;
                         self.has_changes = true;
                     }
                 }
@@ -360,41 +230,30 @@ impl UIState {
         }
     }
 
-    fn handle_picking(&mut self, anchor_on: Option<usize>, swap_on: bool) {
+    fn handle_picking(&mut self) {
         if self.win_anim.is_some() {
             return;
         }
         if let Some(pick_id) = self.new_pick {
-            if Some(pick_id) != anchor_on {
-                self.picked_tile_id = match self.picked_tile_id {
-                    // picked the same tile -> rotate it
-                    Some(id) if id == pick_id => Some(id),
+            self.picked_facet_id = match self.picked_facet_id {
+                // picked the same facet
+                Some(id) if id == pick_id => Some(id),
 
-                    // picked another tile -> swap them
-                    Some(id) if swap_on && self.right_click => {
-                        if self.swapping.is_none() {
-                            self.swapping = Some((id, pick_id, 0.));
-                            self.has_changes = true;
-                        }
-                        Some(id)
-                    }
-
-                    // picked a new tile
-                    _ => {
-                        self.has_changes = true;
-                        Some(pick_id)
-                    }
-                };
-            }
+                // picked a new facet
+                _ => {
+                    self.has_changes = true;
+                    Some(pick_id)
+                }
+            };
         }
         self.new_pick = None;
-        if self.rotation != 0. {
-            if let Some(id) = self.picked_tile_id {
-                if self.rotating[id].is_none() {
-                    self.rotating[id] = Some((0., self.rotation > 0.));
+        if self.new_rotation != 0. {
+            if let Some(id) = self.picked_facet_id {
+                if self.rotating[id / 5].is_none() {
+                    self.rotating[id / 5] = Some((0., self.new_rotation > 0.));
                 }
             }
-            self.rotation = 0.;
+            self.new_rotation = 0.;
         }
     }
 }
@@ -415,104 +274,124 @@ fn run(mut model: Model) {
         vec3(0.0, 0.0, 0.0),
         up.truncate().normalize(),
         degrees(45.0),
-        0.1,
-        50.0,
+        1.,
+        20.0,
     );
+    camera.alt_proj = variable_projection(window.viewport().aspect(), 0.5, 45.);
 
-    // tiles 3D objects
-    let tile_mat = CpuMaterial {
-        albedo: Srgba::WHITE,
-        emissive: Srgba {
-            r: 5,
-            g: 5,
-            b: 0,
-            a: 255,
-        },
+    fn facet_colors_init() -> Vec<Srgba> {
+        let colors = [
+            Srgba::WHITE,
+            Srgba::BLUE,
+            Srgba::RED,
+            Srgba::GREEN,
+            Srgba::new_opaque(178, 178, 178),
+            Srgba::new_opaque(255, 255, 0),
+            Srgba::new_opaque(255, 0, 255),
+            Srgba::new_opaque(0, 255, 255),
+            Srgba::new_opaque(50, 50, 50),
+            Srgba::new_opaque(255, 140, 0),
+            Srgba::new_opaque(0, 255, 255),   //10
+            Srgba::new_opaque(50, 50, 50),    //11
+            Srgba::new_opaque(255, 140, 0),   //12
+            Srgba::new_opaque(178, 178, 178), //13
+            Srgba::new_opaque(255, 255, 0),   //14
+            Srgba::new_opaque(255, 0, 255),   //15
+            Srgba::GREEN,                     //16
+            Srgba::BLUE,                      //17
+            Srgba::RED,                       //18
+            Srgba::WHITE,                     //19
+        ];
+        let mut facet_colors = vec![Srgba::WHITE; FACET_COUNT];
+        for (i, facets) in TRI_TO_FACETS.iter().enumerate() {
+            let color = colors[i];
+            for facet in facets {
+                facet_colors[*facet] = color;
+            }
+        }
+        facet_colors
+    }
+    let mut facet_colors = facet_colors_init();
+
+    let mat_facets = PhysicalMaterial {
         metallic: 0.6,
         roughness: 0.3,
+        emissive: Srgba::new_opaque(30, 30, 30),
         ..Default::default()
     };
 
     let tile = Polyhedron::ico_tile();
-    const THIN_TILE_INDEX_COUNT: usize = 30;
-    let thin_tile = Polyhedron {
+    const FACET_INDEX_COUNT: usize = 6;
+    let facet = Polyhedron {
         positions: tile
             .positions
             .iter()
-            .take(THIN_TILE_INDEX_COUNT)
+            .take(FACET_INDEX_COUNT)
             .cloned()
             .collect_vec(),
         indices: tile
             .indices
             .iter()
-            .take(THIN_TILE_INDEX_COUNT)
+            .take(FACET_INDEX_COUNT)
             .cloned()
             .collect_vec(),
     };
-    let thin_tile_mesh = thin_tile.into_mesh();
-    let thin_instances = Instances {
+    let facet_mesh = facet.into_mesh();
+    let facet_instances = Instances {
         transformations: vec![],
-        colors: Some(vec![Srgba::GREEN; ICO_TILE_COUNT]),
+        colors: Some(vec![Srgba::WHITE; FACET_COUNT]),
         ..Default::default()
     };
-    let mut thin_tiles = Gm::new(
-        InstancedMesh::new(&context, &thin_instances, &thin_tile_mesh),
-        PhysicalMaterial::new(&context, &tile_mat),
+    let mut facets = Gm::new(
+        InstancedMesh::new(&context, &facet_instances, &facet_mesh),
+        mat_facets,
     );
-    thin_tiles.material.render_states.cull = Cull::Back;
+    facets.material.render_states.cull = Cull::Back;
+
+    // let mut orbiting_cube = Gm::new(
+    //     Mesh::new(&context, &CpuMesh::cube()),
+    //     PhysicalMaterial::default(),
+    // );
+    // orbiting_cube
+    //     .set_transformation(Mat4::from_scale(0.5) * Mat4::from_translation(Vec3::unit_z() * -8.));
 
     let mut ui_state = UIState::new();
     let (font_bytes, font_size) = font_bytes_and_size(ui_state.font);
-    // numbers on tiles
-    let mut numbers = generate_numbers(&model.pentas, &context, font_bytes, font_size);
-    // numbers unused in the tiles
-    let mut numbers_2d = generate_numbers_and_bounds(
-        &model
-            .pentas
-            .iter()
-            .flat_map(|p| p.iter().cloned())
-            .chain(model.unused.iter().cloned())
-            .collect_vec(),
-        &context,
-        font_bytes,
-        font_size,
-    );
-    for unused in model.unused {
-        numbers_2d.get_mut(&unused).unwrap().0.material.color = COLOR_BLACK_BROWN;
-    }
+    // numbers on facets
+    let mut glyphs = generate_glyphs(&context, font_bytes, font_size);
 
     // lights
-    let mut ambient = AmbientLight::new(&context, 0.35, Srgba::WHITE);
+    let ambient = AmbientLight::new(&context, 0.6, Srgba::WHITE);
 
     let mut point_light = PointLight::new(
         &context,
-        0.8,
+        1.,
         Srgba::WHITE,
         vec3(0.0, 0.0, -1.0),
         Attenuation {
-            constant: 0.5,
-            linear: 0.05,
-            quadratic: 0.005,
+            constant: 0.,
+            linear: 0.,
+            quadratic: 0.,
         },
     );
 
     let mut directional_light =
-        DirectionalLight::new(&context, 0.5, COLOR_FIERY_RED, vec3(0.0, -1.0, 0.0));
+        DirectionalLight::new(&context, 0.7, COLOR_FIERY_RED, vec3(0.0, -1.0, 0.0));
 
     // rendering & animation
     let mut trans_factor = 0.05;
-    let tile_anim_speed = 10.0;
-    let mut tile_colors = vec![COLOR_TILE_BASE; ICO_TILE_COUNT];
-    tile_colors[ANCHOR_TILE_ID] = COLOR_TILE_0;
+    let rot_speed = 10.0 / 200.;
 
     // camera control
     let mut control = FreeOrbitControl::new(camera.target(), 1.0, 50.0);
 
     let mut gui = three_d::GUI::new(&context);
-    let mut seed_buffer = format!("{}", model.seed);
+    let mut _seed_buffer = format!("{}", model.seed);
 
     let mut modal_rules = false;
-    let mut difficulty = Difficulty::Normal;
+
+    // let mut perspective_factor = 0.5;
+    // let mut fov_y = 45.;
 
     window.render_loop(move |mut frame_input| {
         let mut panel_width = 0.0;
@@ -529,42 +408,20 @@ fn run(mut model: Model) {
                     if ui.button("How to play").clicked() {
                         modal_rules = true;
                     }
+                    // ui.add_space(50.);
+                    // ui.label("projection");
+                    // ui.add(Slider::new(&mut perspective_factor, 0.0..=1.0));
+                    // ui.label("FOV y");
+                    // ui.add(Slider::new(&mut fov_y, 0.0..=180.0));
                     ui.add_space(50.);
 
-                    ui.heading("Difficulty");
-                    if ui.radio_value(&mut difficulty, Difficulty::Easy, "Easy").clicked() {
-                        model.swap_on = false;
-                        model.triangle_highlighting = true;
+                    if ui.button("Reset").clicked() {
                         model.reset();
-                        ui_state.number_grid = true;
                         ui_state.reset();
                         let (font_bytes, font_size) = font_bytes_and_size(ui_state.font);
-                        numbers = generate_numbers(&model.pentas, &context, font_bytes, font_size);
+                        glyphs = generate_glyphs(&context, font_bytes, font_size);
+                        facet_colors = facet_colors_init();
                         trans_factor = 0.05;
-                        ambient.intensity = 0.35;
-                    };
-                    if ui.radio_value(&mut difficulty, Difficulty::Normal, "Normal").clicked() {
-                        model.swap_on = true;
-                        model.triangle_highlighting = true;
-                        model.reset();
-                        ui_state.number_grid = true;
-                        ui_state.reset();
-                        let (font_bytes, font_size) = font_bytes_and_size(ui_state.font);
-                        numbers = generate_numbers(&model.pentas, &context, font_bytes, font_size);
-                        trans_factor = 0.05;
-                        ambient.intensity = 0.35;
-                    };
-                    if ui.radio_value(&mut difficulty, Difficulty::Hard, "Hard").clicked() {
-                        model.swap_on = true;
-                        model.triangle_highlighting = false;
-                        model.reset();
-                        model.anchor_tile = None;
-                        ui_state.number_grid = false;
-                        ui_state.reset();
-                        let (font_bytes, font_size) = font_bytes_and_size(ui_state.font);
-                        numbers = generate_numbers(&model.pentas, &context, font_bytes, font_size);
-                        trans_factor = 0.05;
-                        ambient.intensity = 0.35;
                     };
 
                     // ui.separator();
@@ -584,40 +441,13 @@ fn run(mut model: Model) {
                         let modal = Modal::new(Id::new("rules")).show(ui.ctx(), |ui| {
                             ui.set_width(frame_input.viewport.width as f32 / 2.);
 
-                            let markdown = format!(
-                                r"# How to play
+                            let markdown = r"# How to play
 
-* Re-organize the tiles so that each triangle (= 3 facets) sums to **`{}`**
-* `left click` - select a tile
-* `mouse wheel` - rotate a selected tile
-* `right click` - swap a selected tile with another tile
-
-# Hints
-
-* Complete a triangle and its numbers light up.
-* Select/deselect a number in the grid to highlight it on the puzzle.
-* Grayed out numbers are not present in the puzzle.
-* The darker tile is anchored; it cannot be rotated or swapped, i.e. all other tiles move relatively to this tile.
-
-# Difficulties
-
-#### Easy
-
-Tiles are fixed in place and can only be rotated; anchoring is disabled.
-
-#### Normal
-
-Base rules.
-
-#### Hard
-
-Base rules but without any hint.
-",
-                                model.goal_sum,
-                            );
+* `left click` to select
+* `mouse wheel` to rotate";
 
                             let mut cache = CommonMarkCache::default();
-                            CommonMarkViewer::new().show(ui, &mut cache, &markdown);
+                            CommonMarkViewer::new().show(ui, &mut cache, markdown);
                         });
 
                         if modal.should_close() {
@@ -637,14 +467,15 @@ Base rules but without any hint.
             height: frame_input.viewport.height,
         };
         camera.set_viewport(viewport);
+        // camera.alt_proj = variable_projection(viewport.aspect(), perspective_factor, fov_y);
 
         for event in frame_input.events.iter_mut() {
-            ui_state.handle_event(event, &context, &mut camera, &thin_tiles, &model.unused);
+            ui_state.handle_event(event, &context, &mut camera, &facets);
         }
         // process all events, then handle picking if any
-        ui_state.handle_picking(model.anchor_tile, model.swap_on);
+        ui_state.handle_picking();
 
-        // tile rotation processing
+        // facet rotation processing
         for (i, rot_opt) in ui_state.rotating.iter_mut().enumerate() {
             match rot_opt {
                 None => (),
@@ -652,10 +483,7 @@ Base rules but without any hint.
                     let clockwise = *clockwise;
                     let next_rot = f32::min(
                         PENTA_ANGLE,
-                        *rot + (PENTA_ANGLE / 10.
-                            * frame_input.elapsed_time as f32
-                            * tile_anim_speed
-                            / 200.0),
+                        *rot + (PENTA_ANGLE / 10. * frame_input.elapsed_time as f32 * rot_speed),
                     );
                     *rot_opt = if next_rot == PENTA_ANGLE {
                         None
@@ -670,127 +498,52 @@ Base rules but without any hint.
                             let new_j = (j + 1) % 5;
                             let offset0 = base_offset + j;
                             let offset1 = base_offset + new_j;
-                            model.puzzle_state.swap(offset0, offset1);
-                            numbers.swap(offset0, offset1);
-                            let tmp = numbers[offset0].2;
-                            numbers[offset0].2 = numbers[offset1].2;
-                            numbers[offset1].2 = tmp;
+                            facet_colors.swap(offset0, offset1);
+                            glyphs.swap(offset0, offset1);
+                            let tmp = glyphs[offset0].1;
+                            glyphs[offset0].1 = glyphs[offset1].1;
+                            glyphs[offset1].1 = tmp;
+
+                            let (penta_from, penta_to, rot_offset) =
+                                offset_to_rot(offset0, offset1, clockwise);
+                            for k in 0..5 {
+                                let offset0 = penta_from * 5 + k;
+                                let offset1 = penta_to * 5 + (rot_offset + offset0) % 5;
+                                facet_colors.swap(offset0, offset1);
+                                glyphs.swap(offset0, offset1);
+                                let tmp = glyphs[offset0].1;
+                                glyphs[offset0].1 = glyphs[offset1].1;
+                                glyphs[offset1].1 = tmp;
+                            }
                         }
+
                         ui_state.has_changes = true;
                     }
                 }
             }
         }
 
-        // swapping processing
-        if let Some((picked_id, o_id, prog)) = ui_state.swapping {
-            let next_prog = f32::min(
-                100.,
-                prog + frame_input.elapsed_time as f32 * tile_anim_speed / 40.,
-            );
-            // swapping is effective at 50% progress
-            if next_prog >= 50. && prog < 50. {
-                let offset = picked_id * 5;
-                let o_offset = o_id * 5;
-                for j in 0..5 {
-                    let offset0 = offset + j;
-                    let offset1 = o_offset + j;
-                    model.puzzle_state.swap(offset0, offset1);
-                    numbers.swap(offset0, offset1);
-                    let tmp = numbers[offset0].1;
-                    numbers[offset0].1 = numbers[offset1].1;
-                    numbers[offset1].1 = tmp;
-                    let tmp = numbers[offset0].2;
-                    numbers[offset0].2 = numbers[offset1].2;
-                    numbers[offset1].2 = tmp;
-                }
-                ui_state.swapping = Some((o_id, picked_id, next_prog));
-                ui_state.picked_tile_id = Some(o_id);
-                ui_state.has_changes = true;
-            } else if next_prog == 100. {
-                ui_state.swapping = None;
-            } else {
-                ui_state.swapping = Some((picked_id, o_id, next_prog));
-            }
-        }
-
         // apply visual changes
         if ui_state.win_anim.is_none() && ui_state.has_changes {
-            let mut win = true;
+            let win = false;
 
-            for [a, b, c] in TRI_TO_FACETS {
-                let num_a = model.puzzle_state[a];
-                let num_b = model.puzzle_state[b];
-                let num_c = model.puzzle_state[c];
-
-                numbers[a].0.material.color = COLOR_TEXT_BAD;
-                numbers[b].0.material.color = COLOR_TEXT_BAD;
-                numbers[c].0.material.color = COLOR_TEXT_BAD;
-
-                numbers_2d.get_mut(&num_a).unwrap().0.material.color = COLOR_GRAY_BROWN;
-                numbers_2d.get_mut(&num_b).unwrap().0.material.color = COLOR_GRAY_BROWN;
-                numbers_2d.get_mut(&num_c).unwrap().0.material.color = COLOR_GRAY_BROWN;
-
-                if model.puzzle_state[a] + model.puzzle_state[b] + model.puzzle_state[c]
-                    != model.goal_sum
-                {
-                    win = false;
-                } else if model.triangle_highlighting {
-                    numbers[a].0.material.color = COLOR_TEXT_GOOD;
-                    numbers[b].0.material.color = COLOR_TEXT_GOOD;
-                    numbers[c].0.material.color = COLOR_TEXT_GOOD;
-
-                    numbers_2d.get_mut(&num_a).unwrap().0.material.color = COLOR_TEXT_GOOD;
-                    numbers_2d.get_mut(&num_b).unwrap().0.material.color = COLOR_TEXT_GOOD;
-                    numbers_2d.get_mut(&num_c).unwrap().0.material.color = COLOR_TEXT_GOOD;
+            for num in glyphs.iter_mut() {
+                num.0.material.albedo = Srgba::BLACK;
+                num.0.material.emissive = Srgba::BLACK;
+            }
+            if let Some(id) = ui_state.picked_facet_id {
+                let id = id / 5;
+                for num in glyphs.iter_mut().skip(id * 5).take(5) {
+                    num.0.material.emissive = Srgba::WHITE;
                 }
-            }
-
-            for tile_color in &mut tile_colors {
-                *tile_color = COLOR_TILE_BASE;
-            }
-
-            if let Some(id) = model.anchor_tile {
-                tile_colors[id] = COLOR_TILE_0;
-            }
-
-            if let Some(num) = ui_state.picked_number {
-                numbers_2d.get_mut(&num).unwrap().0.material.color = COLOR_FIERY_RED;
-                let idx = model
-                    .puzzle_state
-                    .iter()
-                    .find_position(|&n| *n == num)
-                    .unwrap()
-                    .0;
-                numbers[idx].0.material.color = COLOR_FIERY_RED;
-            }
-            if let Some(id) = ui_state.picked_tile_id {
-                for num in numbers.iter_mut().skip(id * 5).take(5) {
-                    num.0.material.color = COLOR_TEXT_PICK;
-                }
-                tile_colors[id] = COLOR_TILE_PICK;
             }
 
             if win {
                 ui_state.win_anim = Some(0.);
-                if let Some(id) = model.anchor_tile {
-                    tile_colors[id] = COLOR_TILE_BASE;
-                }
-                if let Some(num) = ui_state.picked_number {
-                    numbers_2d.get_mut(&num).unwrap().0.material.color = COLOR_GRAY_BROWN;
-                    let idx = model
-                        .puzzle_state
-                        .iter()
-                        .find_position(|&n| *n == num)
-                        .unwrap()
-                        .0;
-                    numbers[idx].0.material.color = COLOR_TEXT_GOOD;
-                }
-                if let Some(id) = ui_state.picked_tile_id {
-                    for num in numbers.iter_mut().skip(id * 5).take(5) {
-                        num.0.material.color = COLOR_TEXT_GOOD;
+                if let Some(id) = ui_state.picked_facet_id {
+                    for num in glyphs.iter_mut().skip(id * 5).take(5) {
+                        num.0.material.emissive = COLOR_FIERY_RED;
                     }
-                    tile_colors[id] = COLOR_TILE_BASE;
                 }
             }
 
@@ -802,76 +555,52 @@ Base rules but without any hint.
             ui_state.win_anim = Some(next_prog);
 
             trans_factor *= 1. + delta / 35.;
-            ambient.intensity = f32::min(1., 0.35 + next_prog / 100. * 0.65);
-            fn recolor(col_from: Srgba, col_to: Srgba, delta: f32) -> Srgba {
-                let (r, g, b) = (
-                    col_from.r as f32 / 255.,
-                    col_from.g as f32 / 255.,
-                    col_from.b as f32 / 255.,
-                );
-                let (tr, tg, tb) = (
-                    col_to.r as f32 / 255.,
-                    col_to.g as f32 / 255.,
-                    col_to.b as f32 / 255.,
-                );
-                let (new_r, new_g, new_b) = (
-                    f32::min(tr, r + delta / 100. * (tr - r)),
-                    f32::min(tg, g + delta / 100. * (tg - g)),
-                    f32::min(tb, b + delta / 100. * (tb - b)),
-                );
-                Srgba::new(
-                    (new_r * 255.) as u8,
-                    (new_g * 255.) as u8,
-                    (new_b * 255.) as u8,
-                    255,
-                )
-            }
-            for tile_color in &mut tile_colors {
-                *tile_color = recolor(COLOR_TILE_BASE, Srgba::new(255, 255, 150, 255), next_prog);
-            }
         }
 
-        // compute tile transformations (rotations, swapping animations)
-        let tile_transformations = TRANSFORMATIONS_BASE
+        // compute facet transformations (rotations, swapping animations)
+        let mut facet_transformations = TRANSFORMATIONS_BASE
             .iter()
-            .enumerate()
-            .map(|(i, mat)| {
-                let rot_mat = if let Some((rot, clockwise)) = ui_state.rotating[i] {
-                    Mat4::from_axis_angle(
-                        TILE0_FACET0_CENTER.normalize(),
-                        degrees(if clockwise { rot } else { -rot }),
-                    )
-                } else {
-                    Mat4::identity()
-                };
-
-                let trans_factor = trans_factor
-                    + match ui_state.swapping {
-                        Some((id, o_id, prog)) if i == id || i == o_id => {
-                            if prog < 25. {
-                                0.005 * prog
-                            } else if prog > 75. {
-                                0.005 * (100. - prog)
-                            } else {
-                                0.125
-                            }
-                        }
-                        _ => 0.,
-                    };
-
-                mat * rot_mat * Mat4::from_translation(*TILE0_FACET0_CENTER * trans_factor)
-            })
+            .flat_map(|trans| (0..5).map(|_| *trans))
             .collect_vec();
+        for (i, base_transf) in facet_transformations.iter_mut().enumerate() {
+            if let Some((rot, clockwise)) = ui_state.rotating[i / 5] {
+                let rot_mat = Mat4::from_axis_angle(
+                    TILE0_CENTER.normalize(),
+                    degrees(if clockwise { rot } else { -rot }),
+                );
+                *base_transf = *base_transf * rot_mat;
+            };
 
-        // apply tile transformations to numbers
-        for (number, i, rot_mat, pos_mat) in numbers.iter_mut() {
-            number.set_transformation(tile_transformations[*i] * *rot_mat * *pos_mat);
+            *base_transf = *base_transf
+                * facet_shift_rotation(i / 5, i % 5)
+                * Mat4::from_translation(*FACET0_CENTER * trans_factor * 2.);
+        }
+        for i in 0..facet_transformations.len() {
+            if let Some((rot, clockwise)) = ui_state.rotating[i / 5] {
+                let rot_mat = Mat4::from_axis_angle(
+                    TILES_CENTERS[i / 5].normalize(),
+                    degrees(if clockwise { rot } else { -rot }),
+                );
+                if i % 5 == 0 {
+                    for j in PENTAS_GRAPH[i / 5] {
+                        for k in 0..5 {
+                            facet_transformations[j * 5 + k] =
+                                rot_mat * facet_transformations[j * 5 + k];
+                        }
+                    }
+                }
+            };
         }
 
-        // apply tile transformations to tiles
-        thin_tiles.set_instances(&Instances {
-            transformations: tile_transformations,
-            colors: Some(tile_colors.clone()),
+        // apply facet transformations to glyphs
+        for (glyph, i, pos_mat) in glyphs.iter_mut() {
+            glyph.set_transformation(facet_transformations[*i] * *pos_mat);
+        }
+
+        // apply facet transformations to facets
+        facets.set_instances(&Instances {
+            transformations: facet_transformations,
+            colors: Some(facet_colors.clone()),
             ..Default::default()
         });
 
@@ -890,24 +619,10 @@ Base rules but without any hint.
 
         screen
             .write::<RendererError>(|| {
-                thin_tiles.render(&camera, &lights);
-                for number in &numbers {
-                    number.0.render(&camera, &[]);
-                }
-                if ui_state.number_grid {
-                    let viewport = frame_input.viewport;
-                    for (n, (number, (x_min, x_max, _, _))) in numbers_2d.iter_mut() {
-                        let column = (*n - 1) / 5;
-                        let row = (*n - 1) % 5;
-                        number.set_transformation(Mat4::from_translation(Vec3::new(
-                            (viewport.width as i32 - (GRID_WIDTH - column * GRID_COL_WIDTH)
-                                + GRID_COL_WIDTH / 2) as f32
-                                - (*x_max - *x_min) / 2.,
-                            (viewport.height as i32 - (GRID_ROW_HEIGHT * (row + 1))) as f32,
-                            0.,
-                        )));
-                        number.render(&Camera::new_2d(viewport), &[]);
-                    }
+                // orbiting_cube.render(&camera, &lights);
+                facets.render(&camera, &lights);
+                for glyph in &glyphs {
+                    glyph.0.render(&camera, &lights);
                 }
                 Ok(())
             })
@@ -917,4 +632,36 @@ Base rules but without any hint.
 
         FrameOutput::default()
     });
+}
+
+// from https://math.stackexchange.com/questions/3677516/what-is-the-projection-matrix-of-reverse-byzantine-perspective/3747701#3747701
+// f: perspective to antiperspective factor, 0..=1
+// fov_y: degrees, <180
+fn variable_projection(aspect: f32, f: f32, fov_y: f32) -> Mat4 {
+    let far = 20.;
+    let near = 1.;
+    let fov_y = degrees(fov_y / 2.);
+    let tan = fov_y.tan();
+    let top = near * tan;
+    let right = top * aspect;
+
+    let depth = far - near;
+
+    let ws = near + depth * f;
+
+    let a = -(far + near) / depth;
+    let b = -2. * near * far / depth - f * depth;
+    let c = 2. * f - 1.;
+    let d = f * (far + near);
+
+    let px = ws / right;
+    let qy = ws / top;
+
+    Mat4::new(
+        px, 0., 0., 0., //
+        0., qy, 0., 0., //
+        0., 0., a, b, //
+        0., 0., c, d,
+    )
+    .transpose()
 }
