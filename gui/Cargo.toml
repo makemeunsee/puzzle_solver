@@ -5,11 +5,12 @@ edition = "2021"
 
 [dependencies]
 cgmath = "*"
-egui_commonmark = "0.19"
 image = { version = "*", default-features = false, features = ["png"] }
 itertools = "0.14.0"
 lazy_static = "1.5.0"
 log = "0.4.25"
 rand = "0.9"
 solvers = { path = "../solvers" }
+# three-d = { version = "*", features= ["egui-gui", "text"] }
 three-d = { path = "../../three-d", features= ["egui-gui", "text"] }
+web-time = "1.1"
