@@ -142,7 +142,9 @@ impl Model {
         Model { rng, moves: vec![] }
     }
 
-    fn reset(&mut self) {}
+    fn reset(&mut self) {
+        self.moves.clear();
+    }
 }
 
 struct UIState {
